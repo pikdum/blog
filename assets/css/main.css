@@ -3,3 +3,14 @@ body {
   max-width: 800px;
   padding: 1em;
 }
+
+nav ul {
+  display: flex;
+  list-style-type: none;
+  padding: 0;
+  gap: 1em;
+}
+
+footer {
+  text-align: center;
+}

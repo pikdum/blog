@@ -1,7 +1,8 @@
 +++
-title = 'Site Goals'
+title = 'Site Goals (2014)'
 date = 2014-07-23
 draft = false
+tags = ['meta']
 +++
 
 Now that this site is now live and (mostly) working, I'll outline some goals.
