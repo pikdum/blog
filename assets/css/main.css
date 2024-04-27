@@ -14,3 +14,9 @@ nav ul {
 footer {
   text-align: center;
 }
+
+.post-list-item {
+  display: flex;
+  justify-content: space-between;
+  margin-right: 2em;
+}
