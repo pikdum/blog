@@ -2,6 +2,7 @@
 title = 'My Home Network'
 date = 2024-05-05
 draft = false
+tags = ['infrastructure']
 +++
 
 Here's an overview of my home network setup.
