@@ -71,7 +71,7 @@ This is where I keep my access point, since it wouldn't work great from the clos
 * SSIDs:
   * $WIFI
   * $WIFI - Guest
-  * $WIFI- IoT
+  * $WIFI - IoT
 
 It uses the router interfaces to keep the different networks isolated.
 
