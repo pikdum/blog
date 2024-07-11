@@ -8,7 +8,7 @@ tags = ['elixir', 'World of Warcraft', 'programming']
 [Thistle Tea](https://github.com/pikdum/thistle_tea) is my new World of Warcraft private server project.
 You can log in, create a character, run around, and cast spells to kill mobs, with everything synchronized between players as expected for an MMO.
 It was floating around in my head to build this for a while, since I have an incurable nostalgia for early WoW.
-I first mentioned this on May 13th, and didn't expect to get any further than login, character creation, and spawning into the map.
+I first mentioned this on May 13th and didn't expect to get any further than login, character creation, and spawning into the map.
 Here's a recount of the first month of development.
 
 ## Day 0
