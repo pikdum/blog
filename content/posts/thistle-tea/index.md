@@ -190,6 +190,7 @@ In the update packet, I still had the object guid hardcoded.
 This is because it wants a packed guid and I needed to write some functions to handle that.
 Rather than the entire guid, a packed guid is a byte mask followed by all non-zero bytes.
 The byte mask has bits set that correspond to where the following bytes go in the unpacked guid.
+This is for optimizing packet size, since a guid is always 8 bytes but a packed guid can be as small as 2 bytes.
 
 This took a while, because the client was crashing when I changed the packed guid from `<<1, 4>>` to anything else.
 After trying different things and wasting a lot of time, I realized that the guid was in two places in the packet and they needed to match.
