@@ -34,7 +34,7 @@ The auth flow can be simplified as:
 
 * Client sends a **CMD_AUTH_LOGON_CHALLENGE** packet
 * Server sends back some data for the client to use in crypto calculations
-* Client sends a **CMD_AUTH_LOIGON_PROOF** packet with the client proof
+* Client sends a **CMD_AUTH_LOGON_PROOF** packet with the client proof
 * If the client proof matches what's expected, server sends over the server_proof
 * Client is now authenticated
 
