@@ -167,10 +167,8 @@ It worked, but it messed with line numbers in error messages and made things har
 After that, I wanted to generate that spawn packet properly rather than hardcoding.
 The largest piece of this was figuring out the update mask for the update fields.
 
-TODO: explain this better, maybe show some code/diagrams/bits
-
 Simplified, there are a ton of fields for objects, units, players, etc.
-Before the fields in an update message, there's a bit mask with bits set at offsets that correspond to the fields being sent.
+Before the fields in an update packet, there's a bit mask with bits set at offsets that correspond to the fields being sent.
 Without that, the client wouldn't know what to do with the values.
 Luckily it's all well documented, but it still took a while to implement.
 
@@ -189,13 +187,13 @@ Movement would come up soon, so I started adding the handlers for those packets.
 ## Day 6 - June 7th
 
 In the update packet, I still had the object guid hardcoded.
-This is because it used a packed guid, and I needed to write some functions to handle that.
+This is because it wants a packed guid and I needed to write some functions to handle that.
 Rather than the entire guid, a packed guid is a byte mask followed by all non-zero bytes.
 The byte mask has bits set that correspond to where the following bytes go in the unpacked guid.
 
 This took a while, because the client was crashing when I changed the packed guid from `<<1, 4>>` to anything else.
-After trying different things, I realized that the guid was in two places in the packet and they needed to match.
-One fix later and things were working as expected.
+After trying different things and wasting a lot of time, I realized that the guid was in two places in the packet and they needed to match.
+A quick fix later and things were working as expected.
 
 Links:
 
@@ -216,7 +214,6 @@ After entering the world, I would use `Registry.dispatch/3` to:
 * both using **SMSG_UPDATE_OBJECT**
 
 After that, I  added a similar dispatch when handling movement packets to broadcast movement to all other players.
-When broadcasting movement, the client message doesn't even really need to be parsed, since the server message is essentially the same with the player's guid prepended to the payload.
 This is where the choice of Elixir really started to shine, and I quickly had players able to see each other move around the screen.
 
 
@@ -226,7 +223,7 @@ I tested this approach with multiple windows open and it was very cool to see ev
 
 ![](20240608_19h17m07s_grim.avif)
 
-I added a handler for **CMSG_NAME_QUERY** to get names to stop showing up as Unkown, and also despawned players with **SMSG_DESTROY_OBJECT** when logging out.
+I added a handler for **CMSG_NAME_QUERY** to get names to stop showing up as Unknown and also despawned players with **SMSG_DESTROY_OBJECT** when logging out.
 
 This is where I started noticing a bug: occasionally I wouldn't be able to decrypt a packet successfully, which would lead to all future attempts failing too, since there's a counter as part of the decryption function.
 I couldn't figure out how to resolve it yet, though, or reliably reproduce.
@@ -245,13 +242,13 @@ Links:
 ## Day 8 - June 9th
 
 To get chat working, I handled **CMSG_MESSAGECHAT** and broadcasted **SMSG_MESSAGECHAT** to players, using `Registry.dispatch/3` here too.
-I only focused on /say here, and it's all players rather than nearby.
+I only focused on /say here and it's all players rather than nearby.
+Something to fix later.
 
 ![](20240609_01h43m59s_grim.avif)
 
-To fix that decryption bug, sometimes I was getting more than one packet and needed to split them.
-I added some logic to use the packet size in the header to only grab the right amount of bytes, handling any leftovers separately.
-This seemed to help, but didn't resolve the issue entirely.
+Related to that weird decryption bug, I handled the case where the server received more than one packet at once.
+This might've helped a bit, but didn't completely resolve the issue.
 
 Links:
 
@@ -264,9 +261,9 @@ I still had authentication with a hardcoded username, password, and salt, so it 
 Rather than go with PostgreSQL or SQLite for the database, I decided to go with Mnesia, since one of my goals was to learn more about Elixir and its ecosystem.
 I briefly tried plain :mnesia, but decided to use Memento for a cleaner interface.
 
-So I added models for Account and Character and refactored everything to use them.
-Rather than save to the database everytime the character changes, I just keep it in the process state and only save on logout or disconnect.
-I'm thinking of saving on **CMSG_PING** too, eventually.
+So, I added models for Account and Character and refactored everything to use them.
+The character object is kept in process state and only persisted to the database on logout or disconnect.
+Saving on a **CMSG_PING** or just periodically could be a good idea too, eventually.
 Right now data isn't persisted to disk, since I'm still iterating on the data model, but that should be straightforward to toggle later.
 
 Links:
@@ -278,13 +275,13 @@ Links:
 ## Day 10 - June 11th
 
 Today was standardizing the logging, handling a bit more of chat, and handling an unencrypted **CMSG_PING**.
-I was thinking that could be part of the intermittent issues too, but looking back I don't think I've ever had my client send that unencrypted anyways.
+I was thinking that could be part of the intermittent decryption issues too, but looking back I don't think I've ever had my client send that unencrypted anyways.
 
 ## Day 11 - June 12th
 
 I wanted equipment working so players weren't naked all the time, so I started on that.
 Using the MaNGOS item_template table, I wired things up to set random equipment on character creation.
-Then I got that added to the response to **CMSG_CHAR_ENUM**, so they would show up in the login screen.
+Then I added that to the response to **CMSG_CHAR_ENUM** so they would show up in the login screen.
 
 ![](20240612_00h50m55s_grim.avif)
 
@@ -296,13 +293,13 @@ Took a bit to figure out the proper offsets for each piece of equipment in the u
 
 ![](20240613_18h13m22s_grim.avif)
 
-By adding it to the function that builds the update object packet, it also just worked when showing other player's equipment.
+Since equipment is part of the update object packet, it just worked for other players.
 
 ![](20240613_18h41m43s_grim.avif)
 
 ## Day 13 - June 14th
 
-I had player movement synchronizing between players properly, so I wanted to get sitting working too.
+I had player movement synchronizing between players properly so I wanted to get sitting working too.
 
 ![](20240614_00h39m20s_grim.avif)
 
@@ -313,7 +310,7 @@ Weird things happen when field offsets or sizes are incorrect when building that
 
 After that, I wanted to play around a bit by randomizing equipment on every jump.
 Here I learned that you need to send all fields in the update object packet, like health, or they get reset.
-I was trying to just send the equipment changes, but I'd die on every jump.
+I was trying to just send the equipment changes but I'd die on every jump.
 
 ![](20240614_20h11m08s_grim.avif)
 
@@ -327,10 +324,10 @@ Took a break.
 
 Today was refactoring and improvements.
 I reworked things into proper modules, since it was getting hard to debug when all the line numbers were wrong.
-So now game.ex called the appropriate module's `handle_packet/3` function.
+Now game.ex called the appropriate module's `handle_packet/3` function, rather than combining everything with `use`.
 
-I also reworked things so players were spawned with their current position, rather than the original that I saved in the registry.
-This included some rework to make building an update packet more straightforward.
+I also reworked things so players were spawned with their current position instead of the initial position saved in the registry.
+This included some changes to make building an update packet more straightforward.
 
 ### Day 16 - June 17th
 
@@ -343,15 +340,16 @@ Not sure why the model is messed up here, but it seems like it's something with 
 ## Day 17 - June 18th
 
 The world was feeling a bit empty, so I wanted to spawn in mobs.
-First was hardcoding an update packet that should spawn a mob, and having it trigger on /say.
+First was hardcoding an update packet that should spawn a mob and having it trigger on /say.
 
 ![](20240618_18h20m25s_grim.avif)
 
 After that, I used the creature table of the MaNGOS database to get proper mobs spawning.
-I used a GenServer for this, so every mob would be a process and keep track of their own state.
+I used a GenServer for this so every mob would be a process and keep track of their own state.
+Communication between mobs and players would happen through message passing.
 First I hardcoded a few select ids in the starting area to load, and after that worked I loaded them all.
 
-Rather than spawn all ~57k mobs for the player, though, I wired things up to only spawn things within a certain range.
+Rather than spawn all ~57k mobs for the player, I wired things up to only spawn things within a certain range.
 This looked like:
 
 * Store mob pids in a Registry, along with their x, y, z position
@@ -359,7 +357,7 @@ This looked like:
 * On player login, dispatch on that MobRegistry, using `within_range/2` to only build spawn packets for mobs within range
 * On player movement, do the same
 
-It worked really well, and I could run around and see the mobs.
+It worked really well and I could run around and see the mobs.
 
 ![](20240618_20h02m55s_grim.avif)
 
@@ -389,14 +387,14 @@ To fix, I reworked both the mob and player registries to use map as the key.
 
 ![](20240619_00h41m11s_grim.avif)
 
-Having mobs standing in place was a bit boring, so I wanted them to move around.
-Turns out this is pretty complicated, and I'll actually have to read the maps so mobs stay on the ground properly.
-There are a few projects for this, but all a bit difficult to include in an Elixir project.
-I'm thinking I'll look into RPC, but there's a chance that might not be performant enough.
+Having mobs standing in place was a bit boring and I wanted them to move around.
+Turns out this is pretty complicated and I'll actually have to use the map files so mobs stay on the ground properly.
+There are a few projects for this, all a bit difficult to include in an Elixir project.
+I'm thinking RPC could work, not sure if it'll be performant enough or not though.
 
-The standard update object packet can be used for mob movement here, but it looks like there might be some more specialized packets to look into later too.
+The standard update object packet can be used for mob movement here, but there might be some more specialized packets to look into later too.
 
-Without the map data, I couldn't really get the server movement to line up with what happened in the client.
+Without the map data, I couldn't get the server movement to line up with what happened in the client.
 So, I settled with getting mobs to spin at random speeds.
 
 {{<video src="./2024-06-19 18-21-02-[00.00.799-00.02.699]-audio.webm">}}
@@ -413,23 +411,23 @@ Links:
 ## Day 19 - June 20th
 
 Here I got mob names working by implementing **CMSG_CREATURE_QUERY**.
-This seemed to crash when querying mobs that didn't have a model, so I removed them from being loaded.
-I also started loading in mob movement data and optimized the query a bit.
+This crashed the client when querying mobs that didn't have a model, so I removed them from being loaded.
+I also started loading in mob movement data and optimized the query a bit to speed up startup.
 
 ![](20240620_18h33m27s_grim.avif)
 
-I also finally got some people to help me test the networking.
+I finally got some people to help me test the networking later that day.
 It didn't start very well.
 
 ![](20240620_22h20m18s_grim.avif)
 
-Turns out I hadn't tested this locally since adding mobs, and the player + mob spawn/despawns were conflicting with each other due to guid collisions.
-So players were being constantly spawned in and out.
+Turns out I hadn't tested this locally since adding mobs and the player/mob spawn/despawns were conflicting with each other due to guid collisions.
+Players were being constantly spawned in and out.
 
 ![](20240620_22h22m55s_grim.avif)
 
 I did some emergency patching to make it so players are never despawned, even out of range.
-I also turned off /say spawning boars, since that was getting annoying.
+I also turned off /say spawning boars since that was getting annoying.
 That worked for now.
 
 ![](20240620_23h03m05s_grim.avif)
@@ -445,8 +443,8 @@ Links:
 
 ## Day 20 - June 21
 
-To reproduce that issue, I set things up so I could connect to my local server from my laptop on the same network.
-On my laptop, I used `tc` to simulate a lot of latency and wired things up so equipment would change on any movement instead of just jump.
+To reproduce that issue, I connected to my local server from my laptop on the same network.
+On my laptop, I used `tc` to simulate a ton of latency and wired things up so equipment would change on any movement instead of just jump.
 This sent a ton of packets when spinning and I was finally able to reproduce.
 
 ![](20240621_23h35m50s_grim.avif)
@@ -454,10 +452,10 @@ This sent a ton of packets when spinning and I was finally able to reproduce.
 Turns out, the crashing issues were from the server not receiving an entire packet, but still trying to decrypt and handle it.
 I was handling if the server got more than one packet, but not if the server got a partial packet.
 
-Referencing Shadowburn, the fix for this is to let the packet data accumulate until there's enough to handle.
-This seems to have fixed all the network-related issues.
+Referencing Shadowburn, the fix for this was to let the packet data accumulate until there's enough to handle.
+Seems to have fixed all of the network-related issues.
 
-To fix the guid collision issue, I added a large offset to creature guids, so they'll never conflict.
+To fix the guid collision issue, I added a large offset to creature guids so they'll never conflict with players.
 
 ## Day 21 - June 22
 
@@ -465,7 +463,7 @@ Took a break.
 
 ## Day 22 - June 23
 
-Worked on **CMSG_ITEM_NAME_QUERY** a bit, but I think there's still something wrong here.
+Worked on **CMSG_ITEM_NAME_QUERY** a bit, but there's still something wrong here.
 
 ![](20240623_17h34m30s_grim.avif)
 
@@ -498,7 +496,7 @@ Took a longer break.
 
 ## Day 27 - June 28
 
-I was able to get a cast bar showing up by sending **SMSG_SPELL_START** after reading the cast spell packet.
+I was able to get a cast bar showing up by sending **SMSG_SPELL_START** after receiving the cast spell packet.
 
 ![](20240628_22h57m17s_grim.avif)
 
@@ -514,7 +512,7 @@ Links:
 
 ## Day 28 - June 29
 
-I got self-cast spells working, by setting the target guid to the player's guid.
+I got self-cast spells working by setting the target guid to the player's guid.
 
 ![](20240629_00h13m16s_grim.avif)
 
@@ -524,18 +522,20 @@ Another break.
 
 ## Day 30 - July 1
 
-Since I had spells somewhat working, I had to clean up the implementation.
-I dispatched the **SMSG_SPELL_START** and **SMSG_SPELL_GO** packets to nearby players and fixed spell cancelling, so movement would cancel as expected.
+Since I had spells somewhat working, next I had to clean up the implementation.
+I dispatched the **SMSG_SPELL_START** and **SMSG_SPELL_GO** packets to nearby players and fixed spell cancelling, so now movement cancels spells as expected.
 
 ![](20240701_18h44m36s_grim.avif)
 
 ## Day 31 - July 2
 
 I added levels to mobs, random from their minimum to maximum level, rather than hardcoding to 1.
-Then I made spells do hardcoded damage, so mobs could die.
+Then I made spells do some hardcoded damage, so mobs could die.
 Noticed that mobs would still change orientation when dead, so added a check to only move if alive.
 
 ![](20240702_20h41m22s_grim.avif)
+
+That seemed like a good stopping point and was 1 month since I started writing code for the project.
 
 # Future Plans
 
