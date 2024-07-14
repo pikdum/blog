@@ -243,7 +243,7 @@ I tested this approach with multiple windows open and it was very cool to see ev
 
 I added a handler for **CMSG_NAME_QUERY** to get names to stop showing up as Unknown and also despawned players with **SMSG_DESTROY_OBJECT** when logging out.
 
-This is where I started noticing a bug: occasionally I wouldn't be able to decrypt a packet successfully, which would lead to all future attempts failing too, since there's a counter as part of the decryption function.
+This is where I started noticing a bug: occasionally I wouldn't be able to decrypt a packet successfully, which would lead to all future attempts for that connection failing too, since there's a counter as part of the decryption function.
 I couldn't figure out how to resolve it yet, though, or reliably reproduce.
 
 Links:
@@ -365,7 +365,7 @@ I used a GenServer for this so every mob would be a process and keep track of th
 Communication between mobs and players would happen through message passing.
 First I hardcoded a few select ids in the starting area to load, and after that worked I loaded them all.
 
-Rather than spawn all ~57k mobs for the player, I wired things up to only spawn things within a certain range.
+Rather than spawn all ~57k mobs for the player, I wired things up to only spawn mobs within a certain range.
 This looked like:
 
 * Store mob pids in a Registry, along with their x, y, z position
