@@ -11,24 +11,27 @@ It was floating around in my head to build this for a while, since I have an inc
 I first mentioned this on May 13th and didn't expect to get any further than login, character creation, and spawning into the map.
 Here's a recount of the first month of development.
 
-## Day 0
+## Prep Work
 
 Before coding, I did some research and came up a plan.
 
 * Code this in Elixir, using the actor model.
-* MaNGOS has done the hard work on collecting all the data, so use it.
-* Use Thousand Island as the socket server.
+* [MaNGOS](https://github.com/mangoszero/database) has done the hard work on collecting all the data, so use it.
+* Use [Thousand Island](https://github.com/mtrudel/thousand_island) as the socket server.
 * Treat this project as an excuse to learn more Elixir.
 * Reference existing projects and documentation rather than working from scratch.
 * Speed along the happy path rather than try and handle every error.
 
 ## Day 1 - June 2nd
 
-There are two parts that needed to be built: the authentication server and the game server.
+There are two main parts to a World of Warcraft server: the authentication server and the game server.
 Up first was authentication, since you can't do anything without logging in.
 
-My plan was to build a MITM proxy between the client and a MaNGOS server to log all packets.
-It wasn't as useful as expected, but it did help me internalize how the requests and responses worked.
+To learn more about the requests and responses, I built a quick MITM proxy between the client and a MaNGOS server to log all packets.
+It wasn't as useful as expected, since not much was consistent, but it did help me internalize how the requests and responses worked.
+
+The first byte of an authentication packet is the opcode, which indicates which message it is, and the rest is a payload with the relevant data.
+I was able to extract the fields from the payload by pattern matching on the binary data.
 
 The auth flow can be simplified as:
 
@@ -38,10 +41,9 @@ The auth flow can be simplified as:
 * If the client proof matches what's expected, server sends over the server_proof
 * Client is now authenticated
 
-Packets have a header section that contains the opcode, or message type, and the size, followed by the payload.
-
 It uses SRP6, which I hadn't heard of before this.
-Seems like the idea is to avoid transmitting an unencrypted password, and instead both the client and server independently calculate something that only matches if they both know the correct password.
+Seems like the idea is to avoid transmitting an unencrypted password and instead both the client and server independently calculate a proof that only matches if they both know the correct password.
+If the proof matches, then authentication is successful.
 
 So basically, what I needed to do was:
 
@@ -53,7 +55,7 @@ So basically, what I needed to do was:
 This whole part is well documented, but I still ran into some issues with the cryptography.
 Luckily, I found a blog post and an accompanying Elixir implementation, so I was able to substitute my broken cryptography with working cryptography.
 Without that, I would've been stuck at this part for a very long time (maybe forever).
-Still wasn't able to get login working on day 1, but I was close.
+Wasn't able to get login working on day 1, but I was close.
 
 Links:
 
@@ -61,10 +63,11 @@ Links:
 * http://srp.stanford.edu/design.html
 * https://shadowburn-project.org/2018/10/17/logging-in-with-vanilla.html
 * https://gitlab.com/shadowburn/shadowburn
+* https://hexdocs.pm/elixir/main/binaries-strings-and-charlists.html
 
 ## Day 2 - June 3rd
 
-I spent some time cleaning up the code and realised I had a logic error where I reversed some crypto bytes that weren't supposed to be.
+I spent some time cleaning up the code and found a logic error where I reversed some crypto bytes that weren't supposed to be.
 Fixing that made auth work, finally getting a success with hardcoded credentials.
 
 ![](20240603_21h10m37s_grim.avif)
@@ -91,20 +94,25 @@ The game server auth flow can be simplified as:
 * Client sends back **CMSG_AUTH_SESSION**, with another client proof
 * If client proof matches server proof, server sends a successful **SMSG_AUTH_RESPONSE**
 
-This basically negotaties how to encrypt/decrypt future packet headers.
+
+This negotaties how to encrypt/decrypt future packet headers.
 Luckily Shadowburn also had crypto code for this, so I was able to use it here.
+The server proof requires a value previously calculated by the authentication server, so I used an Agent to store that session value.
+It worked, but I later refactored it to use ETS for a simpler interface.
 
 After that, it's something like:
 
 * Client sends message to server
-* Server decrypts header, which contains type of message and message size
+* Server decrypts header, which contains message size (2 bytes) and opcode (4 bytes)
 * Server handles message and sends back 0 or more messages to client
 
-First is handling **CMSG_CHAR_CREATE** and **CMSG_CHAR_ENUM**:
+First was handling **CMSG_CHAR_CREATE** and **CMSG_CHAR_ENUM**, so I could create and list characters.
+I originally used an Agent for storage here as well, which made things quick to prototype.
 
 ![](20240604_16h06m17s_grim.avif)
 
-Then I got side-tracked for a bit trying to get equipment to show up, since I had all the equipment display bytes just hardcoded to 0 before.
+Then I got side-tracked for a bit trying to get equipment to show up, since I had all the equipment display ids hardcoded to 0.
+I looked through the MaNGOS database and hardcoded a few proper display ids before moving on.
 
 ![](20240604_19h02m30s_grim.avif)
 
@@ -114,20 +122,24 @@ I found an example minimal **SMSG_UPDATE_OBJECT** spawn packet, which was suppos
 That's probably the most important packet, since it does everything from:
 
 * Spawning things into the world, like players, mobs, objects, etc.
-* Updating their values, like health, position, etc.
+* Updating their values, like health, position, level, etc.
 
-It has a lot of different forms, can update multiple objects in a single packet, and has a compressed variant.
+It has a lot of different forms, can batch multiple object updates into a single packet, and has a compressed variant.
 
 ![](20240604_20h08m46s_grim.avif)
 
 Whoops, had the coordinates a bit off.
+
 After fixing that, I was in the human starting area as expected.
 No player model yet, though.
 
 ![](20240604_20h18m34s_grim.avif)
 
+I thought movement was broken, but it turns out all keybinds were being unset on every login, so the movement keys just weren't bound.
+Manually navigating to the keybinding configuration and resetting them to default allowed me to move around.
+
 Next up was adding more to that spawn packet to use the player race and proper starting area.
-The starting areas were grabbed from a MaNGOS database that I converted over to SQLite.
+The starting areas were grabbed from a MaNGOS database that I converted over to SQLite and wired up with Ecto.
 
 ![](20240604_20h59m35s_grim.avif)
 
@@ -135,9 +147,9 @@ Last for the night was to get logout working.
 
 The implementation was something like:
 
-* Queue a **:login_complete** message to send **SMSG_LOGOUT_COMPLETE** to the client
+* After receiving a **CMSG_LOGOUT_REQUEST**, use `Process.send_after/3` to queue a **:login_complete** message that would send **SMSG_LOGOUT_COMPLETE** to the client in 20 seconds
 * Store a reference to that timer in state
-* If received a cancel, cancel the timer
+* If received a **CMSG_LOGOUT_CANCEL**, cancel the timer and remove it from state
 
 This was the first piece that really took advantage of Elixir's message passing.
 
@@ -167,20 +179,26 @@ It worked, but it messed with line numbers in error messages and made things har
 After that, I wanted to generate that spawn packet properly rather than hardcoding.
 The largest piece of this was figuring out the update mask for the update fields.
 
-Simplified, there are a ton of fields for objects, units, players, etc.
-Before the fields in an update packet, there's a bit mask with bits set at offsets that correspond to the fields being sent.
+There are a ton of fields for the different types of objects **SMSG_UPDATE_OBJECT** handles.
+Before the raw object fields in the payload, there's a bit mask with bits set at offsets that correspond to the fields being sent.
 Without that, the client wouldn't know what to do with the values.
-Luckily it's all well documented, but it still took a while to implement.
+
+So, I needed to write a function that would generate this bit mask from the fields I pass in.
+Luckily it's all well documented, but it still took a while to get to a working implementation.
 
 Links:
 
 * https://gtker.com/wow_messages/types/update-mask.html
+* https://gtker.com/wow_messages/docs/object.html
 
 ## Day 5 - June 6th
 
 Referencing MaNGOS, I added some more messages that the server sends to the client after a **CMSG_PLAYER_LOGIN**.
 One of these, **SMSG_ACCOUNT_DATA_TIMES**, fixed the white chat box and keybinds being reset.
-I also added **SMSG_COMPRESSED_UPDATE_OBJECT**, which compresses the update packet with `:zlib.compress/1`.
+
+I also added **SMSG_COMPRESSED_UPDATE_OBJECT**, which compresses the **SMSG_UPDATE_OBJECT** packet with `:zlib.compress/1`.
+This was more straightforward than expected, and I made things use the compressed variant if it's actually smaller.
+I'm expecting this to have even more benefits when I get to batching object updates, but right now I'm only updating objects one by one.
 
 Movement would come up soon, so I started adding the handlers for those packets.
 
@@ -203,7 +221,7 @@ Links:
 ## Day 7 - June 8th
 
 It was about time to start implementing the actual MMO features, starting with seeing other players.
-To test, I hardcoded another update packet after the player's with a different guid, to try and spawn something.
+To test, I hardcoded another update packet after the player's with a different guid, to try and spawn something other than the player.
 
 ![](20240607_23h59m00s_grim.avif)
 
@@ -217,7 +235,6 @@ After entering the world, I would use `Registry.dispatch/3` to:
 After that, I  added a similar dispatch when handling movement packets to broadcast movement to all other players.
 This is where the choice of Elixir really started to shine, and I quickly had players able to see each other move around the screen.
 
-
 ![](20240608_01h02m37s_grim.avif)
 
 I tested this approach with multiple windows open and it was very cool to see everything synchronized.
@@ -228,8 +245,6 @@ I added a handler for **CMSG_NAME_QUERY** to get names to stop showing up as Unk
 
 This is where I started noticing a bug: occasionally I wouldn't be able to decrypt a packet successfully, which would lead to all future attempts failing too, since there's a counter as part of the decryption function.
 I couldn't figure out how to resolve it yet, though, or reliably reproduce.
-
-Up next was working on chat.
 
 Links:
 
@@ -290,11 +305,11 @@ Up next was getting it showing in game.
 
 ## Day 12 - June 13th
 
-Took a bit to figure out the proper offsets for each piece of equipment in the update mask, but eventually got it working.
+It took a bit to figure out the proper offsets for each piece of equipment in the update mask, but I eventually got it working.
 
 ![](20240613_18h13m22s_grim.avif)
 
-Since equipment is part of the update object packet, it just worked for other players.
+Since equipment is part of the update object packet, it just worked for other players, which was nice.
 
 ![](20240613_18h41m43s_grim.avif)
 
@@ -368,7 +383,7 @@ Next up was optimization and despawning mobs that were now out of range.
 
 For optimization, I didn't want to send duplicate spawn packets for mobs that were already spawned.
 I also wanted to despawn mobs that were out of range.
-To do this, I used ETS to track which guids were spawned.
+To do this, I used ETS to track which guids were spawned for a player.
 
 In the dispatch, the logic was:
 
@@ -376,26 +391,27 @@ In the dispatch, the logic was:
 * if not in_range and spawned, despawn
 * otherwise, ignore
 
-Despawn was done through the same **SMSG_DESTROY_OBJECT** packet that I used for player logout.
+Despawning was done through the same **SMSG_DESTROY_OBJECT** packet used for despawning a player after logging out.
 
 After getting that working, I ran around the world and explored for a bit.
 
 ![](20240619_00h23m11s_grim.avif)
 
-Found a bug in Westfall.
+I noticed something wrong when exploring Westfall.
+Bugs were spawning in the air and then falling down to the ground.
 Turns out I wasn't separating mobs by map, so Westfall had mobs from Silithus mixed in.
-To fix, I reworked both the mob and player registries to use map as the key.
+To fix, I reworked both the mob and player registries to use the map as the key.
 
 ![](20240619_00h41m11s_grim.avif)
 
 Having mobs standing in place was a bit boring and I wanted them to move around.
-Turns out this is pretty complicated and I'll actually have to use the map files so mobs stay on the ground properly.
+Turns out this is pretty complicated and I'll actually have to use the map files to generate paths that don't float or clip through the ground.
 There are a few projects for this, all a bit difficult to include in an Elixir project.
-I'm thinking RPC could work, not sure if it'll be performant enough or not though.
+I'm thinking RPC could work, but not sure if it'll be performant enough yet.
 
-The standard update object packet can be used for mob movement here, but there might be some more specialized packets to look into later too.
+The standard update object packet can be used for mob movement here, since it has a movement block, but there might be some more specialized packets to look into later too.
 
-Without the map data, I couldn't get the server movement to line up with what happened in the client.
+Without using the map data, I couldn't get the server movement to line up with what happened in the client.
 So, I settled with getting mobs to spin at random speeds.
 
 {{<video src="./2024-06-19 18-21-02-[00.00.799-00.02.699]-audio.webm">}}
@@ -444,19 +460,19 @@ Links:
 
 ## Day 20 - June 21
 
-To reproduce that issue, I connected to my local server from my laptop on the same network.
+To reproduce the issue from the previous night, I connected to my local server from my laptop on the same network.
 On my laptop, I used `tc` to simulate a ton of latency and wired things up so equipment would change on any movement instead of just jump.
-This sent a ton of packets when spinning and I was finally able to reproduce.
+This sent a lot of packets when spinning and I was finally able to reproduce.
 
 ![](20240621_23h35m50s_grim.avif)
 
-Turns out, the crashing issues were from the server not receiving an entire packet, but still trying to decrypt and handle it.
+Turns out the crashing issues were from not receiving a complete packet, but still trying to decrypt and handle it.
 I was handling if the server got more than one packet, but not if the server got a partial packet.
 
-Referencing Shadowburn, the fix for this was to let the packet data accumulate until there's enough to handle.
-Seems to have fixed all of the network-related issues.
+Referencing Shadowburn's implementation, the fix for this was to let the packet data accumulate until there's enough to handle.
+This finally resolved the weird decryption issue I ran into on day 7.
 
-To fix the guid collision issue, I added a large offset to creature guids so they'll never conflict with players.
+For the guid collision issue, I added a large offset to creature guids so they won't conflict with player guids.
 
 ## Day 21 - June 22
 
@@ -465,11 +481,12 @@ Took a break.
 ## Day 22 - June 23
 
 Worked on **CMSG_ITEM_NAME_QUERY** a bit, but there's still something wrong here.
+It could be that it's trying to calculate damage using some values I'm not passing to the client yet.
 
 ![](20240623_17h34m30s_grim.avif)
 
-Decided spells would be next, so I started that.
-First was sending spells over with **SMSG_INITIAL_SPELLS** on login, using the initial spells in MaNGOS.
+Decided spells would be next, so I started on that.
+First was sending spells over with **SMSG_INITIAL_SPELLS** on login, using the initial spells in MaNGOS, so I'd have something in the spellbook.
 Everything was instant cast though, for some reason.
 
 ![](20240623_20h41m09s_grim.avif)
@@ -480,7 +497,7 @@ Turns out I needed to set **unit_mod_cast_speed** in the player update packet fo
 
 I started by handling **CMSG_CAST_SPELL**, which would send a successful **SMSG_CAST_RESULT** after the spell cast time, so other spells could be cast.
 I also handled **CMSG_CANCEL_CAST**, to cancel that timer.
-This looked a bit like the logout logic.
+This implementation looked a bit like the logout logic.
 
 The starting animation for casting a spell would play, but no cast bar or anything further.
 
@@ -524,25 +541,25 @@ Another break.
 ## Day 30 - July 1
 
 Since I had spells somewhat working, next I had to clean up the implementation.
-I dispatched the **SMSG_SPELL_START** and **SMSG_SPELL_GO** packets to nearby players and fixed spell cancelling, so now movement cancels spells as expected.
+I dispatched the **SMSG_SPELL_START** and **SMSG_SPELL_GO** packets to nearby players and fixed spell cancelling.
 
 ![](20240701_18h44m36s_grim.avif)
 
 ## Day 31 - July 2
 
-I added levels to mobs, random from their minimum to maximum level, rather than hardcoding to 1.
+I added levels to mobs, random from their minimum to maximum level, previously hardcoded 1.
 Then I made spells do some hardcoded damage, so mobs could die.
-Noticed that mobs would still change orientation when dead, so added a check to only move if alive.
+Mobs would still randomly change orientation when dead, so added a check to only move if alive.
 
 ![](20240702_20h41m22s_grim.avif)
 
-That seemed like a good stopping point and was 1 month since I started writing code for the project.
+That seemed like a good stopping point and was one month since I started writing code for the project.
 
-# Future Plans
+## Future Plans
 
-I plan on slowly working on this, adding more functionality as I go.
-My goal isn't really a 1:1 Vanilla server, but more something that fits well with Elixir's capabilities.
-I'd like to see how many players this approach can handle, and how it compares in performance to MaNGOS, eventually.
+I'll slowly work on this, adding more functionality as I go.
+My goal isn't a 1:1 Vanilla server, but more something that fits well with Elixir's capabilities, so I don't plan on accepting limitations for the sake of accuracy or similar.
+I'd like to see how many players this approach can handle and how it compares in performance to other implementations eventually too.
 
 Some things on the list:
 
@@ -553,5 +570,12 @@ Some things on the list:
 * mob movement + combat ai
 * loot + inventory management
 * more spells + effects
+* tons of refactoring
+* benchmarking
+* gameplay loop, in general
 
 So still plenty more work to do. :)
+
+Thanks to all the projects I've referenced for this, most of which I've tried to link here.
+
+I wouldn't have gotten very far without them and their awesome documentation.
