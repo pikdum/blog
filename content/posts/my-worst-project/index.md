@@ -5,7 +5,7 @@ draft = false
 tags = ['programming', 'Steam Deck', 'linux']
 +++
 
-https://github.com/pikdum/steam-deck
+[![](https://api.star-history.com/svg?repos=pikdum/steam-deck&type=Date)](https://github.com/pikdum/steam-deck)
 
 After getting my Steam Deck in early 2023, I wanted to try installing a mod collection for Skyrim.
 The recommendation at the time was to do it all on a Windows PC and then copy all the files over, but I didn't have a Windows PC.
