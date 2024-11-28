@@ -69,6 +69,10 @@ table {
   white-space: nowrap;
 }
 
+li {
+  word-break: break-word;
+}
+
 @media only screen and (max-width: 600px) {
   .post-list-item {
     flex-direction: column;
