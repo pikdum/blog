@@ -11,6 +11,7 @@ nav ul,
   padding: 0;
   gap: 1em;
   justify-content: center;
+  flex-wrap: wrap;
 }
 
 footer {
