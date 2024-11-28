@@ -1,5 +1,5 @@
 +++
-title = 'Building a WoW server in Elixir'
+title = 'Building a World of Warcraft server in Elixir'
 date = 2024-07-14
 draft = false
 tags = ['elixir', 'World of Warcraft', 'programming']

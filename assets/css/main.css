@@ -25,6 +25,15 @@ summary {
   cursor: pointer;
 }
 
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  text-wrap: balance;
+}
+
 @media only screen and (max-width: 600px) {
   .post-list-item {
     flex-direction: column;
