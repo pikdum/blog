@@ -4,11 +4,14 @@ body {
   padding: 1em;
 }
 
-nav ul {
+nav ul,
+.terms ul {
   display: flex;
   list-style-type: none;
   padding: 0;
   gap: 1em;
+  justify-content: center;
+  flex-wrap: wrap;
 }
 
 footer {
@@ -19,10 +22,19 @@ footer {
   display: flex;
   justify-content: space-between;
   margin-right: 2em;
+  margin-bottom: 0.25em;
+}
+
+.post-list-item a {
+  text-wrap: balance;
 }
 
 summary {
   cursor: pointer;
+}
+
+time {
+  white-space: nowrap;
 }
 
 h1,
@@ -34,8 +46,37 @@ h6 {
   text-wrap: balance;
 }
 
+.post-title,
+.post-date {
+  display: block;
+  text-align: center;
+}
+
+header h1 {
+  font-family: monospace;
+  text-align: center;
+}
+
+.post-list {
+  list-style-type: none;
+  padding-left: 2em;
+}
+
+table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+li {
+  word-break: break-word;
+}
+
 @media only screen and (max-width: 600px) {
   .post-list-item {
     flex-direction: column;
+    margin-bottom: 1em;
+    text-align: center;
   }
 }
