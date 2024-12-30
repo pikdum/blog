@@ -6,60 +6,50 @@ tags = ['elixir', 'World of Warcraft', 'programming', 'update']
 +++
 
 [Thistle Tea](https://github.com/pikdum/thistle_tea) is my World of Warcraft private server project, started in June 2024.
-I wrote a [blog post](/thistle-tea/) back then journaling the first month of development.
-Since then, I've been working on the project bit by bit and took a break for December.
-This is a follow-up post to highlight progress since then, so I'd recommend skimming the original post first.
-
-## Getting Started
-
-![](./20241019_18h17m47s_grim.avif)
-
-When I first shared the project, it was a bit hard to get running locally.
-There were some manual steps to generate the `mangos0.sqlite` and `dbc.sqlite` databases, and not much documentation.
-Things were also pretty cluttered, so I re-organized all the code.
-
-Things are in a much better state now, with everything documented in the [README.md](https://github.com/pikdum/thistle_tea/blob/master/README.md).
-I've scripted out generating the necessary databases, and the only tricky part now is sourcing a Vanilla 1.12.1 client.
-The client is necessary to generate the `dbc.sqlite` and map files, which cannot be distributed with the project.
-
-For contributors, I've created a [Discord channel](https://discord.gg/dSYsRXHDhb).
-Feel free to join if you're interested in following the project or contributing.
-Contributors especially welcome, it'd be a lot of fun (and motivating) to hack on this with others.
+I wrote a [blog post](/posts/thistle-tea/) back then journaling the first month of development and have since been working on the project bit by bit.
+This is a follow-up to highlight progress since then, so I'd recommend skimming the original post first.
 
 ## Pathfinding
 
 {{<video src="./recording_1734995598103-[00.07.150-00.11.920].webm">}}
 
-I briefly tried to get this working during the first month, but couldn't get things working very well.
-It was scrapped, replaced with mobs just randomly rotating.
+I briefly tried to get mobs walking around during the first month, but couldn't get it working very well.
+Since I didn't have map data handy, I couldn't account for terrain changes or buildings.
+Didn't want to spend too much time on it, so I settled for randomly changing mob orientation to at least have something.
 
 I've since integrated with [namigator](https://github.com/namreeb/namigator), through [namigator-rs](https://github.com/gtker/namigator-rs) and [rustler](https://github.com/rusterlium/rustler).
-I originally tried to use the C++ library directly, but wasn't having much luck - Rust was a lot easier to get working.
-It's really neat to be able to Rust libraries pretty much directly in Elixir.
+With `mix build_maps`, namigator parses the game map files to generate navigation meshes and similar.
+These are then used at runtime for pathfinding, exposed through the **ThistleTea.Pathfinding** module.
+Pathfinding is a huge project by itself, so it's great to have this library and not need to build something from scratch.
 
-Namigator works by reading the game maps and doing proper pathfinding to account for obstacles and terrain.
-For random wandering around a point, a new point can be found with `find_random_point_around_circle/3` and then a path with `find_path/3`.
-Following that path is handled by the `:follow_path` message, which handles updating state and then queuing up another `:follow_path` message when the mob will be ready for the next point.
+The Rust bindings were straightforward to wire up, since Rustler handles the heavy lifting of building a NIF.
+I previously tried writing a NIF using the C++ library directly, but didn't have any luck.
+Integrating code written in different languages together is really neat and I haven't done similar before.
+Was surprised by how easy Rustler made it.
 
-It's been working pretty well and is awesome to see mobs moving properly, but there are still some glitches to figure out.
+For getting a mob to randomly wander around, the process looks something like:
+1. use **find_random_point_around_circle/3** to find a new point
+2. use **find_path/3** to find a path to that new point
+3. send a **:follow_path** message to the mob
+4. **:follow_path** updates state and queues another **:follow_path**, until the entire path is traversed
+
+Works great most of the time, but there are still some bugs to figure out.
 
 ## Mob Behavior
 
-I couldn't think of a better name than behavior for this, but it describes what sort of AI a mob is currently following.
-
-Right now there are three:
+This describes what sort of AI routine a mob is currently following:
 * **ThistleTea.WanderBehavior** - random wandering around a point
 * **ThistleTea.FollowPathBehavior** - following waypoints
 * **ThistleTea.AttackBehavior** - chasing a player during combat
 
-Mobs either have wandering or following a path as their default behavior.
-If wandering, they'll have a certain range to stay in from their initial part.
-If following a path, they'll have some waypoints to follow.
-The attack behavior is switched to when attacked, right now it's incredibly basic and only attempts to follow the player.
+The default behavior for a mob is either wander, follow path, or none.
+If wandering, they'll stay within a specified range of their initial point.
+If following a path, they'll have a list of waypoints to follow.
+Mobs switch to the attack behavior when attacked and start chasing the player.
 
-To keep CPU use low, mobs will idle until a player is within observation range and only then load a behavior.
-Behaviors are implemented as GenServer processes too and interact with the main mob process by passing messages.
-This way they can be easily started/stopped whenever.
+To keep CPU usage low, mobs idle until a player is within observation range and only then load a behavior.
+Once all players are out of range, mobs unload their behavior and go back to idling.
+Behaviors are implemented as GenServer processes and interact with the main mob process by passing messages, so they can easily be started/stopped/swapped whenever.
 
 ## Combat
 
@@ -79,21 +69,21 @@ I plan to look into what packets other implementations are sending for this, the
 
 ![](<Screenshot 2024-12-23 at 17-52-25 Phoenix LiveDashboard.avif>)
 
-I needed some way to see how long packets were taking to handle, so I wired up `:telemetry` to get some timing information.
-This showed that movement packets took a long time, since it was also handling spawning and despawning entities as the player moved around.
-To optimize, I moved that into a period task instead that runs every second.
+I needed some way to see how long packets were taking to handle, so I wired up **:telemetry** to get timing information.
+This showed that movement packets took significantly longer than others, since spawning and despawning entities was being handled as the player moved around.
+To get that expensive work out of a packet handler function, I moved it into a periodic task instead that currently runs every second.
 
 Another issue was storing every entity (~100k) in a regular list and looping the entire thing to check if it's in range.
-I switched that to a spatial hashing implementation, which uses ETS and puts entities inside of cells.
+I switched that to a spatial hashing implementation, which puts entities inside of cells and uses ETS under the hood.
 Instead of checking every entity, now only nearby cells need to be checked.
 This is significantly faster, but I lost the exact benchmarks.
 
-I also looked into octrees instead of spatial hashing.
+I also looked into using an [octree](https://en.wikipedia.org/wiki/Octree) instead of spatial hashing.
 Octrees had faster query performance, but updating a position was worse.
 The implementation was also more complex, especially with needing to rebalance the tree.
 So to keep things straightforward, I went with spatial hashing instead.
 
-Mob behavior idling was implemented to prevent wasting CPU cyclings on moving mobs around when there's nobody around to observe it.
+Mob behavior idling helps with both CPU and memory use, since it allows us to load navigation meshes on demand and only simulate movement for nearby mobs.
 
 ## Web
 
@@ -142,6 +132,7 @@ ChatGPT was useful to get even more interesting places to check out.
 This is when you right click on a NPC and get a dialog window, with maybe some options.
 An example is asking a city guard for directions.
 I've also managed to get some quests showing up here, but I think these are all sort of delivery quests.
+I was hoping to get proper quests showing up, but that's likely something different than gossip.
 
 ## Game Objects
 
@@ -150,12 +141,33 @@ I've also managed to get some quests showing up here, but I think these are all 
 Previously I was only spawning mobs into the world, but now I'm also spawning game objects.
 These are things like dynamic seasonal decorations, mailboxes, chairs, etc.
 The implementation is a lot like mobs, with each game object getting a GenServer process.
-There's still a lot of work here - like right now I'm just loading all game objects in the database and getting all seasonal decorations simultaneously.
+There's still a lot of work here, like properly handling seasonal decorations so they all aren't active at once.
+
+## Contributing
+
+![](./20241019_18h17m47s_grim.avif)
+
+When I first shared the project, it was a bit hard to get running locally.
+There were some manual steps to generate the **mangos0.sqlite** and **dbc.sqlite** databases and not much documentation.
+Things were also pretty cluttered, so I had to go through and organize all the code.
+
+Things are in a much better state now, with everything documented in the [README.md](https://github.com/pikdum/thistle_tea/blob/master/README.md).
+I've scripted out generating the necessary databases and the only tricky part now is sourcing a Vanilla 1.12.1 client.
+The client is necessary to generate the **dbc.sqlite** and map files, but cannot be distributed with the project.
+
+For contributors, I've created a [Discord channel](https://discord.gg/dSYsRXHDhb).
+Feel free to join if you're interested in following the project or helping out.
+Contributors especially welcome, it'd be a lot of fun (and motivating) to hack on this with others.
 
 ## Future Work
 
 My plan right now is to concentrate on breadth rather than depth.
 I'd like a little bit of everything working, even if it's not complete or anywhere near perfect.
-After that, then a lot of time can be spent refactoring and polishing the implementations.
+After that, a lot of time can be spent refactoring and polishing the implementations.
 
-If anybody's interested in helping out, there's the Discord channel and a bunch of GitHub issues.
+Some items on my short list:
+* quests
+* loot + inventory management
+* mobs attacking players
+
+If anybody's interested in helping out, there's the [Discord channel](https://discord.gg/dSYsRXHDhb) and a [bunch of GitHub issues](https://github.com/pikdum/thistle_tea/issues).
