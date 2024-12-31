@@ -44,7 +44,7 @@ This describes what sort of AI routine a mob is currently following:
 
 The default behavior for a mob is either wander, follow path, or none.
 If wandering, they'll stay within a specified range of their initial point.
-If following a path, they'll have a list of waypoints to follow.
+If following a path, they'll have a list of waypoints to visit in a loop.
 Mobs switch to the attack behavior when attacked and start chasing the player.
 
 To keep CPU usage low, mobs idle until a player is within observation range and only then load a behavior.
@@ -59,11 +59,11 @@ I've added basic support for auto attacks, only with the mainhand weapon, using 
 A lot of checks, like range or orientation, are still missing though.
 
 After killing a mob, it will now respawn.
-This is handled by setting a timer to kill the process, so it's restarted by the supervisor in the original state.
+This is handled by setting a timer to kill the mob process, so it's restarted by the supervisor in the original state.
 
 When in combat, mobs will now follow the player.
 This is very rough right now and mobs will noticeably teleport a bit.
-I plan to look into what packets other implementations are sending for this, there's probably something I'm missing to make this more smooth.
+I plan to look into what packets other server implementations are sending for this, there's probably something I'm missing to make this more smooth.
 
 ## Optimization
 
@@ -74,7 +74,7 @@ This showed that movement packets took significantly longer than others, since s
 To get that expensive work out of a packet handler function, I moved it into a periodic task instead that currently runs every second.
 
 Another issue was storing every entity (~100k) in a regular list and looping the entire thing to check if it's in range.
-I switched that to a spatial hashing implementation, which puts entities inside of cells and uses ETS under the hood.
+I switched that to a spatial hashing implementation, which puts entities inside of cells and uses [ETS](https://www.erlang.org/doc/apps/stdlib/ets.html) under the hood.
 Instead of checking every entity, now only nearby cells need to be checked.
 This is significantly faster, but I lost the exact benchmarks.
 
@@ -89,7 +89,7 @@ Mob behavior idling helps with both CPU and memory use, since it allows us to lo
 
 ![](<./Screenshot 2024-12-23 at 17-42-52 ThistleTea · Phoenix Framework.avif>)
 
-I wanted this project to have a web aspect, so I wired up Phoenix.
+I wanted this project to have a web aspect, so I wired up [Phoenix](https://phoenixframework.org).
 I figured it'd be neat to have a map that shows real-time location of players, so I started with that.
 
 Some technologies used:
@@ -99,20 +99,20 @@ Some technologies used:
 * **LiveView** - the component
 * **R2** - hosting the tiles
 
-I originally started with Leaflet, but found OpenLayers to render more smoothly when panning around and similar.
+I originally started with [Leaflet](https://leafletjs.com), but found [OpenLayers](https://openlayers.org) to render more smoothly when panning around and similar.
 The whole thing is wrapped in a LiveView that initializes the map and places players on it.
 Player positions are updated every second.
 
-I made a landing page with information on how to connect to the instance and embedded the map there.
+For a proper landing page, I added some information on how to connect and embedded the map.
 The test site is visible at [https://thistle_tea.pikdum.dev](https://thistle_tea.pikdum.dev).
 Feel free to connect and play around if you have a Vanilla 1.12 client handy.
 
-I've also wired up Phoenix LiveDashboard to get some monitoring and telemetry visualizations.
-Right now I only have timings on handling packets, but it'd be useful to add periodic tasks and more here later.
+I've also wired up [Phoenix LiveDashboard](https://github.com/phoenixframework/phoenix_live_dashboard) to get some monitoring and telemetry visualizations.
+Right now there's only timings on handling packets, but it'd be useful to add periodic task telemetry and more here later.
 
 ## Debug Commands
 
-![](./20240906_00h52m42s_grim.avif)
+![](./20241231_16h02m19s_grim.avif)
 
 To help test, I wired up some debug chat commands.
 The whole list can be viewed with **.help**, but teleporting is my favorite.
@@ -139,7 +139,7 @@ I was hoping to get proper quests showing up, but that's likely something differ
 ![](./20240921_02h52m24s_grim.avif)
 
 Previously I was only spawning mobs into the world, but now I'm also spawning game objects.
-These are things like dynamic seasonal decorations, mailboxes, chairs, etc.
+These are things like dynamic seasonal decorations, mailboxes, chairs, bonfires, etc.
 The implementation is a lot like mobs, with each game object getting a GenServer process.
 There's still a lot of work here, like properly handling seasonal decorations so they all aren't active at once.
 
