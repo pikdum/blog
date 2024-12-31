@@ -53,7 +53,7 @@ Behaviors are implemented as GenServer processes and interact with the main mob 
 
 ## Combat
 
-![](20240926_02h27m20s_grim.avif)
+![](./20240926_02h27m20s_grim.avif)
 
 I've added basic support for auto attacks, only with the mainhand weapon, using the weapon's speed and damage data.
 A lot of checks, like range or orientation, are still missing though.
