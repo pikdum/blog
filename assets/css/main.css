@@ -80,3 +80,7 @@ li {
     text-align: center;
   }
 }
+
+pre code {
+  background-color: inherit;
+}
