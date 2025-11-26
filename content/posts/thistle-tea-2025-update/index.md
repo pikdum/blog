@@ -14,57 +14,120 @@ This is a follow-up to these posts:
 
 ## New Year's Blues
 
-- at start of year, things bad
-- code organized around genservers
-- huge genservers
-- genservers where i didn't need genservers
-- packets manually constructed ad-hoc
-- long startup + high initial memory use from starting all mobs
-- bad organization
-- constructing update object messages was a pain
-- ended up doing an incremental approach of the existing code
+The last big feature I worked on in 2024 was having mobs chase the player they were in combat with.
+This surfaced some pain points in the code and I couldn't come up with an implementation I was happy with.
+Movement splines weren't working as expected and the mob file was getting pretty cumbersome to work with in general.
+This led me to take a step back and come up with ideas on how to clean things up.
+
+Code was largely organized around a few large GenServers and it was pretty difficult to reason about individual parts of the system.
+Network concerns were also mixed in with game logic, which wasn't very fun to work with.
+Ideally I'd be able to handle game behavior at a different layer than packet layouts, but it was all intermingled.
+
+After lots of thinking, experimentation, and procrastination, I adopted an incremental approach to clean up the existing code.
 
 ## Reworking Update Object Messages
 
-- this is complicated
-- https://gtker.com/wow_messages/types/update-mask.html
-- entities: player, mob, item, game object, etc.
-- entities are made up of some combination of these components:
-  - object
-  - item
-  - container
-  - unit
-  - player
-  - gameobject
-  - dynamicobject
-  - corpse
-- the plan:
-  - make struct for each component
-    - use a DSL to specify include offset, size, type directly alongside the fields
-  - make update_object struct that contains components
-  - give it a nice interface for turning that into an https://gtker.com/wow_messages/docs/smsg_update_object.html packet
-  - clean up the logic
-- benefits:
-  - everything's there now, no need to add more fields as we add functionality
-  - clean abstraction
-  - all entities can use this interface the same
-- next steps:
-  - after this was done, next obvious step was to make entities use these components directly, too
+The object update message is one of the more complicated parts of the networking logic.
+This handles multiple types of updates, entities, and a ton of fields.
+It uses a [bitmask](https://gtker.com/wow_messages/types/update-mask.html) to tell the client which fields it contains.
+
+The previous implementation was pretty hacky and had a few bugs.
+Fields were also added incrementally as they were needed, so it was incomplete.
+This lives on the edge of things though, so it was a good first candidate for reworking.
+To start with, I needed to add some structure to this.
+
+The fields that this message works with can be grouped together into components:
+- object
+- item
+- container
+- unit
+- player
+- gameobject
+- dynamicobject
+- corpse
+
+Entities are then combinations of these components, like:
+* mob = object + unit
+* player = object + unit + player
+
+
+Thinking of things like that, I made structures for each component.
+Using a small macro, byte offset and type information could be placed alongside the fields:
+
+```elixir
+defmodule ThistleTea.Game.Entity.Data.Component.Object do
+  use ThistleTea.Game.Entity.UpdateMask,
+    guid: {0x0000, 2, :guid},
+    type: {0x0002, 1, :int},
+    entry: {0x0003, 1, :int},
+    scale_x: {0x0004, 1, :float}
+end
+```
+
+And the update object message could look like this:
+
+```elixir
+defmodule ThistleTea.Game.Network.UpdateObject do
+  defstruct [
+    :update_type,
+    :object_type,
+    :movement_block,
+    :object,
+    :item,
+    :container,
+    :unit,
+    :player,
+    :game_object,
+    :dynamic_object,
+    :corpse
+  ]
+end
+```
+
+This ended up being a nice abstraction and now there's no difference in creating an update object message between mobs, players, or items.
+It's also complete, with every field the client accepts set up in these components and ready for use.
+With this message now using components, the next step was to make entities use them too.
 
 ## Entities
 
-- build out entity abstraction
-- end goal is that players, mobs, etc. would be 'entities' made up of 'components'
-- that way we could write code that more or less uses the components directly, so same code could work for player + mob + game object, etc.
-- this would help solve the pain point that a lot of things are only half implemented right now - like players can autoattack, but mobs cannot, since they're different enough, same with casting spells, etc.
-- idea was to make a nicer foundation so things only need to be implemented once
-- and also split out logic from genservers - taking inspiration from https://pragprog.com/titles/jgotp/designing-elixir-systems-with-otp/ - logic should be nice functional code working on structs, that way unit tests are easier to write and it's easier to reason about, genservers are thin wrappers for that + state
-- the plan:
-  - make new GameObject struct made up of object + gameobject + movement block + internal components
-  - move implementation over to that
-  - new genserver
-  - do the same for mobs
-- lost some functionality as part of this - mobs no longer do combat-related things, combat will be re-implemented using this new entity approach so it will automatically work for players + mobs
+Following that pattern, entities could now look something like this:
+
+```elixir
+defmodule ThistleTea.Game.Entity.Data.Mob do
+  defstruct object: %Object{},
+            unit: %Unit{},
+            movement_block: %MovementBlock{},
+            internal: %Internal{}
+end
+```
+
+Game logic was a bit of a paint point, with some bits written specifically for their entities.
+Players could attack, but not receive attacks.
+Mobs could receive attacks, but not attack.
+Things like that.
+But by unifying the data model, then the same implementation could work on either.
+
+For example, by pattern matching on the individual components, this function works on both mobs and players:
+
+```elixir
+def take_damage(
+      %{unit: %Unit{health: health} = unit, movement_block: %MovementBlock{movement_flags: movement_flags} = mb} =
+        entity,
+      damage
+    ) do
+  new_health = max(health - damage, 0)
+  new_movement_flags = if new_health == 0, do: 0, else: movement_flags
+  {:ok, %{entity | unit: %{unit | health: new_health}, movement_block: %{mb | movement_flags: new_movement_flags}}}
+end
+```
+
+So now game objects, mobs, and players are all made up of  the same components.
+Logic is now moved outside of the GenServer modules and into re-usable pure components.
+I took some inspiration from [Designing Elixir Systems with OTP](https://pragprog.com/titles/jgotp/designing-elixir-systems-with-otp/) for organizating things.
+The goal is to have a nice functional core with a boundary layer made up of processes.
+
+As part of this, I did remove some functionality, mostly around combat.
+The idea is to re-implement that using the new abstractions, so combat will work consistently between all entities.
 
 ## On Mangos
 
