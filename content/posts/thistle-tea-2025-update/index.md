@@ -353,7 +353,9 @@ game
 │   │   └── mob.ex
 │   └── update_mask.ex
 ├── entity.ex
+├── math.ex
 ├── network
+│   ├── binary_utils.ex
 │   ├── connection
 │   │   └── crypto.ex
 │   ├── connection.ex
@@ -435,14 +437,15 @@ game
 │   └── update_object.ex
 ├── network.ex
 ├── utils
-│   └── util.ex
 ├── world
-│   ├── cell_activator.ex
-│   ├── mangos
-│   │   ├── game_object_supervisor.ex
-│   │   └── mob_supervisor.ex
+│   ├── loader
+│   │   ├── game_object.ex
+│   │   └── mob.ex
 │   ├── pathfinding.ex
-│   └── spatial_hash.ex
+│   ├── spatial_hash.ex
+│   └── system
+│       ├── cell_activator.ex
+│       └── game_event.ex
 └── world.ex
 ```
 
