@@ -12,6 +12,8 @@ This is a follow-up to these posts:
 
 [Thistle Tea](https://github.com/pikdum/thistle_tea) is a World of Warcraft private server project that I've been working on for a while now. This is a quick update to highlight what's been going on in 2025.
 
+![](./20251121_15h41m10s_grim.avif)
+
 ## New Year's Blues
 
 The last big feature I worked on in 2024 was having mobs chase the player they were in combat with.
