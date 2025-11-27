@@ -37,6 +37,7 @@ This lives on the edge of things though, so it was a good first candidate for re
 To start with, I needed to add some structure to this.
 
 The fields that this message works with can be grouped together into components:
+
 - object
 - item
 - container
@@ -47,8 +48,9 @@ The fields that this message works with can be grouped together into components:
 - corpse
 
 Entities are then combinations of these components, like:
-* mob = object + unit
-* player = object + unit + player
+
+- mob = object + unit
+- player = object + unit + player
 
 Thinking of things like that, I made structures for each component.
 Using a small macro, byte offset and type information could be placed alongside the fields:
@@ -120,7 +122,7 @@ def take_damage(
 end
 ```
 
-So now game objects, mobs, and players are all made up of  the same components.
+So now game objects, mobs, and players are all made up of the same components.
 Logic is now moved outside of the GenServer modules and into re-usable pure components.
 I took some inspiration from [Designing Elixir Systems with OTP](https://pragprog.com/titles/jgotp/designing-elixir-systems-with-otp/) for organizating things.
 The goal is to have a nice functional core with a boundary layer made up of processes.
@@ -289,14 +291,16 @@ I didn't use all of those ideas, but simplified it to something that was straigh
 The idea was to make the use of `ThousandIsland` for handling socket connections a boundary concern and come up with a cleaner abstraction than working with raw binary payloads.
 
 The flow looks like:
-* accumulate binary packets
-* turn that into `%Packet{opcode: opcode, payload: payload, size: size}` structs
-* turn those into the various message structs
-* handle the messages
+
+- accumulate binary packets
+- turn that into `%Packet{opcode: opcode, payload: payload, size: size}` structs
+- turn those into the various message structs
+- handle the messages
 
 Previously, it was just:
-* accumulate binary packets
-* handle those
+
+- accumulate binary packets
+- handle those
 
 So the packet handler functions had to parse out what they cared about from the binary.
 Now it's just all available in a struct to work with by default.
