@@ -19,6 +19,7 @@ This is a follow-up to these posts:
 The last big feature I worked on in 2024 was having mobs chase the player they were in combat with.
 This surfaced some pain points in the code and I couldn't come up with an implementation I was happy with.
 Movement splines weren't working as expected and the mob file was getting pretty cumbersome to work with in general.
+Properly working movement splines would allow sending a sequence of movement points within a single packet, but I had to hack around this and do extra work server side instead.
 This led me to take a step back and come up with ideas on how to clean things up.
 
 Code was largely organized around a few large GenServers and it was pretty difficult to reason about individual parts of the system.
@@ -276,10 +277,26 @@ use ThistleTea.Game.Network.Opcodes, [:SMSG_UPDATE_OBJECT, :SMSG_COMPRESSED_UPDA
 This makes `@smsg_update_object` and `@smsg_compressed_update_object` available, but I don't need to remember or care about the actual opcode values.
 There's also been some tweaks to use atoms in more places where it makes sense.
 
-## pattern matching is nice
+## Pattern matching with structs
 
-- basically get the benefits of types
-- show some examples of the new style i've been using
+Previously there were no structs in the project, everything was just raw maps.
+Most things are now structs, which is nice.
+When pattern matching on structs in function heads, the Elixir compiler can do some type checking that helps a lot with refactoring.
+
+```elixir
+def set_position(
+      %{
+        object: %Object{guid: guid},
+        movement_block: %MovementBlock{position: {x, y, z, _o}},
+        internal: %Internal{map: map}
+      },
+      table
+    ) do
+  SpatialHash.update(table, guid, self(), map, x, y, z)
+end
+```
+
+I've been trying to do this a lot more frequently and it's a pattern I've really been liking.
 
 ## Cleaning up the Network Layer
 
