@@ -105,7 +105,7 @@ defmodule ThistleTea.Game.Entity.Data.Mob do
 end
 ```
 
-Game logic was a bit of a paint point, with some bits written specifically for their entities.
+Game logic was a bit of a pain point, with some bits written specifically for their entities.
 Players could attack, but not receive attacks.
 Mobs could receive attacks, but not attack.
 Things like that.
@@ -127,7 +127,7 @@ end
 
 So now game objects, mobs, and players are all made up of the same components.
 Logic is now moved outside of the GenServer modules and into re-usable pure components.
-I took some inspiration from [Designing Elixir Systems with OTP](https://pragprog.com/titles/jgotp/designing-elixir-systems-with-otp/) for organizating things.
+I took some inspiration from [Designing Elixir Systems with OTP](https://pragprog.com/titles/jgotp/designing-elixir-systems-with-otp/) for organizing things.
 The goal is to have a nice functional core with a boundary layer made up of processes.
 
 As part of this, I did remove some functionality, mostly around combat.
@@ -238,7 +238,7 @@ Turns out the last point needs to be first and then all the intermediate points 
 
 As part of reworking things, I decided I wasn't going to do things from scratch.
 I did end up scrapping the existing mob behavior setup, though.
-It was a bit overcomplicated and used an unneccessary GenServer just to try to isolate state.
+It was a bit overcomplicated and used an unnecessary GenServer just to try to isolate state.
 
 Now with abstractions cleaned up a bit and working movement splines, I reimplemented mob wandering and waypoint pathing.
 This lives in ThistleTea.Game.Entity.Logic.Movement as a functional core now, with the GenServer being a thin wrapper around it:
@@ -528,7 +528,7 @@ This helped a lot already with the object updates, but I'm hoping it helps a lot
 
 ## Up Next
 
-This are in a much better state, but there's still tons to do.
+Things are in a much better state, but there's still tons to do.
 
 Some rough thoughts:
 
