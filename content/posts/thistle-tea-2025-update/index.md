@@ -100,7 +100,7 @@ Some features were lost as part of this, like combat, to be reimplemented later 
 
 ## Message Abstraction
 
-Packets were still being constructed on the fly, so I wanted to build out a nicer and more standardized networking layer.
+When sending packets to the client, most were still being constructed on the fly and I wanted to clean that up.
 The idea was to use structs for messages, so there's less mental overhead and room for error when making them.
 The end result is a higher level interface that looks more like this:
 
@@ -156,7 +156,7 @@ defmodule ThistleTea.Game.Network.Message.CmsgPing do
 end
 ```
 
-This wires things so the packet handling logic can be simplified a lot, something like:
+This allowed simplifying the connection handler a lot, to roughly this:
 
 ```elixir
 %Packet{
@@ -167,6 +167,8 @@ This wires things so the packet handling logic can be simplified a lot, somethin
 |> Packet.to_message()
 |> Message.handle(state)
 ```
+
+Where previously it was passing raw binary around.
 
 All messages previously handled by the application have been migrated to this new consistent interface.
 I've had good luck with having LLMs wire up the `from_binary/1` and `to_binary/1` functions from the packet spec, so I'll likely write some helper scripts to better automate that process.
@@ -219,7 +221,6 @@ end
 
 This ended up being a nice abstraction and now there's no difference in creating an update object message between mobs, players, or items.
 It's also complete, with every field the client accepts set up in these components and ready for use.
-With this message now using components, the next step was to make entities use them too.
 
 ## On Mangos
 
@@ -311,34 +312,6 @@ end
 ```
 
 I've been trying to do this a lot more frequently and it's a pattern I've really been liking.
-
-## Cleaning up the Network Layer
-
-Feel like I spoiled this a bit in a previous section, but I made some efforts to separate out a network layer.
-Previously everything was intermingled, but I wanted to be able to focus on game logic at a higher level in places.
-
-I originally did a [proof of concept](https://github.com/pikdum/thistle_tea/pull/8) for what handling packets could look like if building from scratch and came up with some decent ideas.
-That implementation focused a lot on testability, with side effects represented as data and deferred until later.
-I didn't use all of those ideas, but simplified it to something that was straightforward to retrofit.
-
-The idea was to make the use of `ThousandIsland` for handling socket connections a boundary concern and come up with a cleaner abstraction than working with raw binary payloads.
-
-The flow looks like:
-
-- accumulate binary packets
-- turn that into `%Packet{opcode: opcode, payload: payload, size: size}` structs
-- turn those into the various message structs
-- handle the messages
-
-Previously, it was just:
-
-- accumulate binary packets
-- handle those
-
-So the packet handler functions had to parse out what they cared about from the binary.
-Now it's just all available in a struct to work with by default.
-As part of this, I was able to simplify some things like there's no need for a second GenServer just to handle packet encryption anymore.
-All relevant data for a connection is now on a nice `ThistleTea.Game.Network.Connection` struct.
 
 ## The World
 
