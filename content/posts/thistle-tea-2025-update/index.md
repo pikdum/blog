@@ -28,73 +28,42 @@ Ideally I'd be able to handle game behavior at a different layer than packet lay
 
 After lots of thinking, experimentation, and procrastination, I adopted an incremental approach to clean up the existing code.
 
-## Reworking Update Object Messages
+## Reorganizing
 
-The object update message is one of the more complicated parts of the networking logic.
-This handles multiple types of updates, entities, and a ton of fields.
-It uses a [bitmask](https://gtker.com/wow_messages/types/update-mask.html) to tell the client which fields it contains.
+I've been doing some reading and [Designing Elixir Systems with OTP](https://pragprog.com/titles/jgotp/designing-elixir-systems-with-otp/) was a very helpful book.
+That gave me the idea to more clearly separate the functional core and boundary layer of the application.
 
-The previous implementation was pretty hacky and had a few bugs.
-Fields were also added incrementally as they were needed, so it was incomplete.
-This lives on the edge of things though, so it was a good first candidate for reworking.
-To start with, I needed to add some structure to this.
+The functional core will be concerned with data and logic where the boundary layer will handle the process orchestration.
+This means building out structs, separating logic out of GenServers, and building an interface that doesn't care what the processes are doing under the hood.
+The functional core can be stable and well tested with unit tests, but the boundary layer can be tweaked more easily as needs change.
 
-The fields that this message works with can be grouped together into components:
+Like maybe if one process per entity doesn't actually scale, then the boundary layer can be tweaked to group entities together by cell or map or whatever else instead.
 
-- object
-- item
-- container
-- unit
-- player
-- gameobject
-- dynamicobject
-- corpse
+I'm hoping these changes make it easier to reason about and develop Thistle Tea going forwards, giving it a much more solid foundation.
 
-Entities are then combinations of these components, like:
+## Building Entities Out Of Components
 
-- mob = object + unit
-- player = object + unit + player
+First, some definitions.  
+An _entity_ is something like a player, mob, or item that uses the **SMSG_UPDATE_OBJECT** message.  
+An entity is made up of a combination of _components_, individual groups of related fields.
 
-Thinking of things like that, I made structures for each component.
-Using a small macro, byte offset and type information could be placed alongside the fields:
+Components:
 
-```elixir
-defmodule ThistleTea.Game.Entity.Data.Component.Object do
-  use ThistleTea.Game.Entity.UpdateMask,
-    guid: {0x0000, 2, :guid},
-    type: {0x0002, 1, :int},
-    entry: {0x0003, 1, :int},
-    scale_x: {0x0004, 1, :float}
-end
-```
+- Object
+- Item
+- Container
+- Unit
+- Player
+- Game Object
+- Dynamic Object
+- Corpse
 
-And the update object message could look like this:
+Entities:
 
-```elixir
-defmodule ThistleTea.Game.Network.UpdateObject do
-  defstruct [
-    :update_type,
-    :object_type,
-    :movement_block,
-    :object,
-    :item,
-    :container,
-    :unit,
-    :player,
-    :game_object,
-    :dynamic_object,
-    :corpse
-  ]
-end
-```
+- Mob = Object + Unit
+- Player = Object + Unit + Player
 
-This ended up being a nice abstraction and now there's no difference in creating an update object message between mobs, players, or items.
-It's also complete, with every field the client accepts set up in these components and ready for use.
-With this message now using components, the next step was to make entities use them too.
-
-## Entities
-
-Following that pattern, entities could now look something like this:
+For example, this is what the mob struct now looks like:
 
 ```elixir
 defmodule ThistleTea.Game.Entity.Data.Mob do
@@ -105,13 +74,13 @@ defmodule ThistleTea.Game.Entity.Data.Mob do
 end
 ```
 
-Game logic was a bit of a pain point, with some bits written specifically for their entities.
-Players could attack, but not receive attacks.
+A pain point with writing combat was bits were written specifically for their entities.
+Player could attack, but not receive attacks.
 Mobs could receive attacks, but not attack.
+Players could cast spells, but mobs couldn't.
 Things like that.
-But by unifying the data model, then the same implementation could work on either.
 
-For example, by pattern matching on the individual components, this function works on both mobs and players:
+By unifying the data model, now implementations can be more generic and work across all entities:
 
 ```elixir
 def take_damage(
@@ -126,36 +95,8 @@ end
 ```
 
 So now game objects, mobs, and players are all made up of the same components.
-Logic is now moved outside of the GenServer modules and into re-usable pure components.
-I took some inspiration from [Designing Elixir Systems with OTP](https://pragprog.com/titles/jgotp/designing-elixir-systems-with-otp/) for organizing things.
-The goal is to have a nice functional core with a boundary layer made up of processes.
-
-As part of this, I did remove some functionality, mostly around combat.
-The idea is to re-implement that using the new abstractions, so combat will work consistently between all entities.
-
-## On Mangos
-
-Mangos is the main World of Warcraft private server implementation and Thistle Tea uses its database extensively for things like creatures, items, npc text, etc.
-This worked really well, but I let some of the database model structure leak into the core code, which made things a bit annoying to work with.
-Instead of using their database model directly, I've moved some of it to a boundary concern using 'loaders'.
-These query from the database to get mobs and similar to spawn, but then convert to different structs that are easier to work with.
-
-The idea is that the Mangos database can be used to 'bootstrap' Thistle Tea, but we should prefer working with our own data representations.
-Additionally, the state of the system should be entirely separate from the Mangos database.
-There's still a lot I need to think about there, but I basically want to make it so it's not as tightly coupled.
-
-## Smarter Initialization
-
-Previously, processes for every mob and game object were created on startup.
-This took a few seconds and used about 1.4GB of memory.
-Now these processes are managed dynamically based on where players are active.
-When a cell is within range of a player, its processes are started.
-When a cell is no longer within range, its processes are stopped.
-This makes startup much quicker and brings initial memory use down to 92MB.
-
-The implementation is mostly a GenServer that polls player positions every second and chooses to start or stop cells: `ThistleTea.Game.World.System.CellActivator`
-This pattern seems to work pretty well and the idea is to build out more systems to cover other bits of functionality.
-Think managing game events, battleground queues, battlegrounds in general, dynamic mob spawns, etc.
+Logic has been moved outside of the large GenServer modules and into reusable pure components.
+Some features were lost as part of this, like combat, to be reimplemented later using cleaner abstractions.
 
 ## Message Abstraction
 
@@ -233,6 +174,76 @@ I've had good luck with having LLMs wire up the `from_binary/1` and `to_binary/1
 As part of this, I was also able to figure out movement splines, so now a single message can move a mob to multiple points.
 This simplifies movement handling by a lot and ends up looking smoother.
 Turns out the last point needs to be first and then all the intermediate points follow that as packed offsets.
+
+## Reworking Update Object Messages
+
+The object update message is one of the more complicated parts of the networking logic.
+This handles multiple types of updates, entities, and a ton of fields.
+It uses a [bitmask](https://gtker.com/wow_messages/types/update-mask.html) to tell the client which fields it contains.
+
+The previous implementation was pretty hacky and had a few bugs.
+Fields were also added incrementally as they were needed, so it was incomplete.
+To start with, I needed to add some structure to this.
+
+Since entities are now made up of components and this message deals with components, byte offset and other type information is placed directly alongside the component fields:
+
+```elixir
+defmodule ThistleTea.Game.Entity.Data.Component.Object do
+  use ThistleTea.Game.Entity.UpdateMask,
+    guid: {0x0000, 2, :guid},
+    type: {0x0002, 1, :int},
+    entry: {0x0003, 1, :int},
+    scale_x: {0x0004, 1, :float}
+end
+```
+
+This allows the update object message struct to look like this:
+
+```elixir
+defmodule ThistleTea.Game.Network.UpdateObject do
+  defstruct [
+    :update_type,
+    :object_type,
+    :movement_block,
+    :object,
+    :item,
+    :container,
+    :unit,
+    :player,
+    :game_object,
+    :dynamic_object,
+    :corpse
+  ]
+end
+```
+
+This ended up being a nice abstraction and now there's no difference in creating an update object message between mobs, players, or items.
+It's also complete, with every field the client accepts set up in these components and ready for use.
+With this message now using components, the next step was to make entities use them too.
+
+## On Mangos
+
+Mangos is the main World of Warcraft private server implementation and Thistle Tea uses its database extensively for things like creatures, items, npc text, etc.
+This worked really well, but I let some of the database model structure leak into the core code, which made things a bit annoying to work with.
+Instead of using their database model directly, I've moved some of it to a boundary concern using 'loaders'.
+These query from the database to get mobs and similar to spawn, but then convert to different structs that are easier to work with.
+
+The idea is that the Mangos database can be used to 'bootstrap' Thistle Tea, but we should prefer working with our own data representations.
+Additionally, the state of the system should be entirely separate from the Mangos database.
+There's still a lot I need to think about there, but I basically want to make it so it's not as tightly coupled.
+
+## Smarter Initialization
+
+Previously, processes for every mob and game object were created on startup.
+This took a few seconds and used about 1.4GB of memory.
+Now these processes are managed dynamically based on where players are active.
+When a cell is within range of a player, its processes are started.
+When a cell is no longer within range, its processes are stopped.
+This makes startup much quicker and brings initial memory use down to 92MB.
+
+The implementation is mostly a GenServer that polls player positions every second and chooses to start or stop cells: `ThistleTea.Game.World.System.CellActivator`
+This pattern seems to work pretty well and the idea is to build out more systems to cover other bits of functionality.
+Think managing game events, battleground queues, battlegrounds in general, dynamic mob spawns, etc.
 
 ## Re-implementing Movement
 
@@ -380,87 +391,6 @@ This doesn't yet handle model changes, where a mobs is active all the time but s
 It also needs to be wired up with a scheduler, so that holiday events are started/stopped automatically.
 
 This is probably the start of using PubSub for more things, too.
-
-## Network
-
-Networking has been moved to ThistleTea.Game.Network, where there's a nicer public interface for sending packets to processes.
-
-## Organization
-
-The idea is to keep relevant stuff grouped together to allow for some higher level abstractions.
-Like a game system shouldn't be manually putting together binary packets and should instead be using message structs.
-The top level bits like World, Network, etc. should sort of be public interfaces, with more deeply nested stuff being the internals.
-This isn't enforced, but it's a pattern I'd like to continue exploring.
-
-This is what things look like right now, under ThistleTea.Game:
-
-```
-game
-├── entity
-│   ├── data
-│   │   ├── component
-│   │   │   ├── container.ex
-│   │   │   ├── corpse.ex
-│   │   │   ├── dynamic_object.ex
-│   │   │   ├── game_object.ex
-│   │   │   ├── internal
-│   │   │   │   ├── waypoint.ex
-│   │   │   │   └── waypoint_route.ex
-│   │   │   ├── internal.ex
-│   │   │   ├── item.ex
-│   │   │   ├── movement_block.ex
-│   │   │   ├── object.ex
-│   │   │   ├── player.ex
-│   │   │   └── unit.ex
-│   │   ├── game_object.ex
-│   │   └── mob.ex
-│   ├── logic
-│   │   ├── core.ex
-│   │   └── movement.ex
-│   ├── server
-│   │   ├── game_object.ex
-│   │   └── mob.ex
-│   └── update_mask.ex
-├── entity.ex
-├── math.ex
-├── network
-│   ├── binary_utils.ex
-│   ├── connection
-│   │   └── crypto.ex
-│   ├── connection.ex
-│   ├── message
-│   │   ├── cmsg_*.ex
-│   │   ├── msg_move.ex
-│   │   ├── smsg_*.ex
-│   ├── opcodes.ex
-│   ├── packet.ex
-│   ├── protocols.ex
-│   ├── send.ex
-│   ├── server.ex
-│   └── update_object.ex
-├── network.ex
-├── world
-│   ├── loader
-│   │   ├── game_object.ex
-│   │   └── mob.ex
-│   ├── pathfinding.ex
-│   ├── spatial_hash.ex
-│   └── system
-│       ├── cell_activator.ex
-│       └── game_event.ex
-└── world.ex
-```
-
-I feel like most things will be under message, since there will be one module per message with serialization and handling functions.
-But this is the current pattern and hopefully it'll make more sense where things should be.
-Definitely isn't the final organization though, the plan is to iterate on this and figure out what works and what doesn't.
-There's also things missing, like I've mentioned a few times I need to figure out what Thistle Tea's 'store' or database looks like.
-That'll be needed for entities like items that we don't need/want a process for each, internal lookup tables, etc.
-
-But the overall goal of this refactoring work has been to separate out a functional core from the boundary layer.
-Then the boundary layer can be changed as needs change.
-Like maybe one process per entity actually doesn't scale, it'd be straightforward to swap that out to group by cell, zone, map, etc. instead.
-Right now I'm using pids in some function calls where I should be using ids, but once that's changed the actual boundary layers should matter less and less to the game logic.
 
 ## Gains
 
