@@ -135,11 +135,14 @@ The idea is to re-implement that using the new abstractions, so combat will work
 
 ## On Mangos
 
-- before, we were using datastructures shaped like mangos's tables for easy interop
-- but plan is to change that - mangos should only be used to 'bootstrap' the system, we don't need/want to use their datastructures themselves and should instead transform into a more idiomatic way for us to consume
-- so instead of querying the mangos sqlite database on current state of things, we query the running thistle tea system directly
-- still kinda wip, only mobs + game servers moved to this new model
-- still figuring out a 'store' model
+Mangos is the main World of Warcraft private server implementation and Thistle Tea uses its database extensively for things like creatures, items, npc text, etc.
+This worked really well, but I let some of the database model structure leak into the core code, which made things a bit annoying to work with.
+Instead of using their database model directly, I've moved some of it to a boundary concern using 'loaders'.
+These query from the database to get mobs and similar to spawn, but then convert to different structs that are easier to work with.
+
+The idea is that the Mangos database can be used to 'bootstrap' Thistle Tea, but we should prefer working with our own data representations.
+Additionally, the state of the system should be entirely separate from the Mangos database.
+There's still a lot I need to think about there, but I basically want to make it so it's not as tightly coupled.
 
 ## Smarter Initialization
 
@@ -326,23 +329,70 @@ Now it's just all available in a struct to work with by default.
 As part of this, I was able to simplify some things like there's no need for a second GenServer just to handle packet encryption anymore.
 All relevant data for a connection is now on a nice `ThistleTea.Game.Network.Connection` struct.
 
-## world
+## The World
 
-- idea is to have more things live in world
-- spatial hashing, pathfinding, cell activator and other systems
-- example new system could be the season event system, switch up mobs/game objects/etc. based on active event
-- right now everything's active
-- querying nearby players, broadcasting packets to nearby players, etc. are in the public World interface
+ThistleTea.Game.World is a new namespace to help organize things a bit nicer.
+Things like spatial hashing, pathfinding, loaders, and systems were moved in here.
+Functions to query nearby players, broadcast packets, and start/stop entities are part of the public interface.
 
-## network
+The loaders handle loading data from Mangos into Thistle Tea, transforming things into our representations.
+Systems are another new abstraction, starting with cell activator and game event systems.
+The idea behind systems is to make it more standardized to build things using higher level abstractions in a relatively isolated way.
 
-- public interface for this has sending packets to pids
+There are currently systems for activating cells based on nearby players and changing the current game events, but future ones could handle:
 
-## organization!
+- battleground queues
+- battleground objectives
+- auction house
+- mail
+- dynamic mob spawns
+- gather spots
 
-idea is to kinda keep relevant stuff grouped together
-and use the top level bits like World, Network, etc. as public interfaces to the internals
-still a bit more to be done here, like getting rid of util, but it's in a much better spot
+## Game Event System
+
+TODO: add video showing changing
+
+Mentioned above, there's now a system to change the active game events.
+These are things like the current holidays or faire location.
+We were previously spawning everything regardless, leading to things like overlapping halloween and christmas decorations.
+
+It's a GenServer that keeps track of the current events and notifies subscribers of changed events:
+
+```elixir
+@impl GenServer
+def handle_call(:get_events, _from, state) do
+  {:reply, MapSet.to_list(state.events), state}
+end
+
+@impl GenServer
+def handle_call({:set_events, new_events}, _from, %{events: old_events} = state) do
+  notify(new_events, old_events)
+  {:reply, :ok, %{state | events: new_events}}
+end
+```
+
+If associated with a game event, mobs and game objects subscribe to a channel using Phoenix PubSub.
+They can then decide to do things like change models or despawn themselves.
+Starting an event also sends a message to the cell manager, which will spawn in things that weren't previously active.
+
+The result is that events can now be changed on the fly and it'll handle adding and removing things properly.
+This doesn't yet handle model changes, where a mobs is active all the time but should change appearance during events.
+It also needs to be wired up with a scheduler, so that holiday events are started/stopped automatically.
+
+This is probably the start of using PubSub for more things, too.
+
+## Network
+
+Networking has been moved to ThistleTea.Game.Network, where there's a nicer public interface for sending packets to processes.
+
+## Organization
+
+The idea is to keep relevant stuff grouped together to allow for some higher level abstractions.
+Like a game system shouldn't be manually putting together binary packets and should instead be using message structs.
+The top level bits like World, Network, etc. should sort of be public interfaces, with more deeply nested stuff being the internals.
+This isn't enforced, but it's a pattern I'd like to continue exploring.
+
+This is what things look like right now, under ThistleTea.Game:
 
 ```
 game
@@ -379,75 +429,9 @@ game
 │   │   └── crypto.ex
 │   ├── connection.ex
 │   ├── message
-│   │   ├── cmsg_attackstop.ex
-│   │   ├── cmsg_attackswing.ex
-│   │   ├── cmsg_auth_session.ex
-│   │   ├── cmsg_cancel_cast.ex
-│   │   ├── cmsg_cast_spell.ex
-│   │   ├── cmsg_char_create.ex
-│   │   ├── cmsg_char_enum.ex
-│   │   ├── cmsg_creature_query.ex
-│   │   ├── cmsg_gameobject_query.ex
-│   │   ├── cmsg_gossip_hello.ex
-│   │   ├── cmsg_gossip_select_option.ex
-│   │   ├── cmsg_item_name_query.ex
-│   │   ├── cmsg_item_query_single.ex
-│   │   ├── cmsg_join_channel.ex
-│   │   ├── cmsg_leave_channel.ex
-│   │   ├── cmsg_logout_cancel.ex
-│   │   ├── cmsg_logout_request.ex
-│   │   ├── cmsg_messagechat.ex
-│   │   ├── cmsg_move_worldport_ack.ex
-│   │   ├── cmsg_name_query.ex
-│   │   ├── cmsg_npc_text_query.ex
-│   │   ├── cmsg_ping.ex
-│   │   ├── cmsg_player_login.ex
-│   │   ├── cmsg_set_selection.ex
-│   │   ├── cmsg_setsheathed.ex
-│   │   ├── cmsg_standstatechange.ex
-│   │   ├── cmsg_text_emote.ex
-│   │   ├── cmsg_who.ex
+│   │   ├── cmsg_*.ex
 │   │   ├── msg_move.ex
-│   │   ├── smsg_account_data_times.ex
-│   │   ├── smsg_attackstart.ex
-│   │   ├── smsg_attackstop.ex
-│   │   ├── smsg_auth_challenge.ex
-│   │   ├── smsg_auth_response.ex
-│   │   ├── smsg_bindpointupdate.ex
-│   │   ├── smsg_cast_result.ex
-│   │   ├── smsg_channel_notify.ex
-│   │   ├── smsg_char_create.ex
-│   │   ├── smsg_char_enum.ex
-│   │   ├── smsg_chat_player_not_found.ex
-│   │   ├── smsg_creature_query_response.ex
-│   │   ├── smsg_destroy_object.ex
-│   │   ├── smsg_emote.ex
-│   │   ├── smsg_gameobject_query_response.ex
-│   │   ├── smsg_gossip_message.ex
-│   │   ├── smsg_initial_spells.ex
-│   │   ├── smsg_item_name_query_response.ex
-│   │   ├── smsg_item_query_single_response.ex
-│   │   ├── smsg_login_settimespeed.ex
-│   │   ├── smsg_login_verify_world.ex
-│   │   ├── smsg_logout_cancel_ack.ex
-│   │   ├── smsg_logout_complete.ex
-│   │   ├── smsg_logout_response.ex
-│   │   ├── smsg_messagechat.ex
-│   │   ├── smsg_monster_move.ex
-│   │   ├── smsg_name_query_response.ex
-│   │   ├── smsg_new_world.ex
-│   │   ├── smsg_npc_text_update.ex
-│   │   ├── smsg_pong.ex
-│   │   ├── smsg_set_rest_start.ex
-│   │   ├── smsg_spell_failed_other.ex
-│   │   ├── smsg_spell_failure.ex
-│   │   ├── smsg_spell_go.ex
-│   │   ├── smsg_spell_start.ex
-│   │   ├── smsg_text_emote.ex
-│   │   ├── smsg_transfer_pending.ex
-│   │   ├── smsg_trigger_cinematic.ex
-│   │   ├── smsg_tutorial_flags.ex
-│   │   └── smsg_who.ex
+│   │   ├── smsg_*.ex
 │   ├── opcodes.ex
 │   ├── packet.ex
 │   ├── protocols.ex
@@ -455,7 +439,6 @@ game
 │   ├── server.ex
 │   └── update_object.ex
 ├── network.ex
-├── utils
 ├── world
 │   ├── loader
 │   │   ├── game_object.ex
@@ -468,41 +451,105 @@ game
 └── world.ex
 ```
 
-## misc
+I feel like most things will be under message, since there will be one module per message with serialization and handling functions.
+But this is the current pattern and hopefully it'll make more sense where things should be.
+Definitely isn't the final organization though, the plan is to iterate on this and figure out what works and what doesn't.
+There's also things missing, like I've mentioned a few times I need to figure out what Thistle Tea's 'store' or database looks like.
+That'll be needed for entities like items that we don't need/want a process for each, internal lookup tables, etc.
 
-- this fixed some issues, due to previously having improper hex offsets for the update mask bits
-- now batches update object packets, since they can be easily pattern matched on and the networking piece is cleaned up
-  - currently up to 100 updates in a single packet, pretty cool
+But the overall goal of this refactoring work has been to separate out a functional core from the boundary layer.
+Then the boundary layer can be changed as needs change.
+Like maybe one process per entity actually doesn't scale, it'd be straightforward to swap that out to group by cell, zone, map, etc. instead.
+Right now I'm using pids in some function calls where I should be using ids, but once that's changed the actual boundary layers should matter less and less to the game logic.
 
-## community contributions
+## Gains
+
+Rewriting the object update bits fixed some issues, likely due to previously having improper hex offsets for some fields.
+Like there was a weird issue where every time a player changed equipment the hover cursor would change, now resolved.
+
+Since networking has been standardized with some higher level abstractions, it's been easier to build on top of it.
+Object update packets support batching, but previously we were just doing things one at a time.
+But batching was pretty straightforward to add now, so now if multiple object updates are queued they get batched into a single one automatically before sending to the client:
+
+```elixir
+def accumulate_updates(size, body) do
+  receive do
+    {:"$gen_cast",
+     {:send_packet,
+      %Packet{opcode: @smsg_update_object, payload: <<next_size::little-size(32), 0, next_body::binary>>}}}
+    when size + next_size <= 100 ->
+      accumulate_updates(size + next_size, body <> next_body)
+  after
+    0 -> %Packet{opcode: @smsg_update_object, payload: <<size::little-size(32), 0, body::binary>>}
+  end
+end
+
+@impl GenServer
+def handle_cast(
+      {:send_packet, %Packet{opcode: @smsg_update_object, payload: <<size::little-size(32), 0, body::binary>>}},
+      {socket, state}
+    ) do
+  packet = accumulate_updates(size, body)
+  state = Network.Send.send_packet(packet, {socket, state})
+  {:noreply, {socket, state}, socket.read_timeout}
+end
+```
+
+It could also be possible to use this same pattern to optimize movement later, but that's a bit trickier.
+
+## Community Contributions
+
+We received some awesome community contributions this year!
 
 - better teleport (no longer requires logout) - poffdeluxe
 - emote handler for /dance and others - poffdeluxe
 - set rested state - jmmk
 - set player `unit_faction_template` based on race - adamvietro
 
-## things i didn't do
+## Things I Didn't Do
 
-- code generation of wow_messages
-- entity component system
-- rewrite from scratch
+I looked into code generation from the wow_messages project to make a library that'd automatically be able to serialize/deserialize packets.
+Didn't end up getting anything I was happy with, though.
+I did find that LLMs are pretty good at working with the new Message format to implement that logic from the specs, though, so that's likely the way going forwards.
+Still need to build some tooling to automate this further.
 
-## up next
+I also looked into fully rewriting this from scratch and actually did for bits of the networking layer.
+But there's so much already working and I decided to refactor instead.
+I think this is the right way, I want to build a codebase that can evolve and change nicely rather than one that needs to be frequently scrapped.
 
-things are in a much better state, but the plan is mostly to continue cleaning things up rather than new feature development
-some things:
+Using Entity Component System was another thing I tried a lot.
+Couldn't really get anything I was happy with, though.
+A lot of my proof-of-concepts relied on polling for systems, where sticking with the actor model makes things more reactive instead.
+It also didn't feel like the best way to try and leverage OTP, so scrapped that idea.
 
-- get rid of util.ex
-- clean up handlers more, they were mostly ported as-is, but should stop querying directly from mangos and instead somehow query state from the running system
-  so need that
-- rip out more from the game server processes (connection handler), some things could/should be separate processes, or at least have the logic elsewhere
-- unit tests :^)
-- need a 'store' abstraction - something for entities that aren't processes, like items
-  but also maybe for storing anything else, maybe be a thistle tea in memory storage layer
-  that we can then wire up persistence too
-  not a fan of the current :mnesia based one
-  needs more thought
-- should players be a separate process from the connection handler? would handlers then just be a thin interface that sends messages to the player process?
-- CellActivator, GameObjectSupervisor, MobSupervisor - these could be cleaned up, probably simplify to a dynamic supervisor and then despawn individual entities based on current position
-- Combat - needs to be re-implemented in a way that can be consumed from both players + mobs
-- more 'systems' - good first one is seasonal event system, others eventually could be things like battleground queues, etc.
+I did steal some ideas from ECS, though, like building up our entities out of components.
+Then functions can be written more generically to work on multiple types of entities without needing different implementations.
+This helped a lot already with the object updates, but I'm hoping it helps a lot too when getting to reimplementing combat.
+
+## Up Next
+
+This are in a much better state, but there's still tons to do.
+
+Some rough thoughts:
+
+- clean up handlers, since these were mostly ported as-is
+- stop querying from Mangos, move that all to the edge
+- rip out more logic from the connection handler to make that leaner
+- tests, especially around world systems
+- 'store' abstraction, something for entities like items
+- rip out :mnesia, figure something else out
+- should players be a separate process from the connection handler?
+- re-implement combat
+- add more gameplay systems
+- items and inventory management
+- quests
+
+## Contributing
+
+Interested in the project?
+Want to chat architecture?
+Want to try implementing some features?
+
+Hop in Thistle Tea's [Discord channel](https://discord.gg/dSYsRXHDhb).
+
+These changes (hopefully) made the code much easier to work with and provide a bit of patterns for extending the system.
