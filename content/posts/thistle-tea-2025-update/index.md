@@ -12,7 +12,7 @@ This is a follow-up to these posts:
 
 [Thistle Tea](https://github.com/pikdum/thistle_tea) is a World of Warcraft private server project that I've been working on for a while now. This is a quick update to highlight what's been going on in 2025.
 
-![](./20251121_15h41m10s_grim.avif)
+![](./melli.avif)
 
 ## New Year's Blues
 
@@ -236,7 +236,7 @@ There are currently systems for activating cells based on nearby players and cha
 
 ### Game Event System
 
-TODO: add video showing changing
+{{<video src="./faire.mp4">}}
 
 Mentioned above, there's now a system to change the active game events.
 These are things like the current holidays or faire location.
@@ -276,6 +276,18 @@ When a cell is within range of a player, its processes are started.
 When a cell is no longer within range, its processes are stopped.
 This makes startup much quicker and brings initial memory use down to 92MB.
 
+### On Mangos
+
+[Mangos](https://www.getmangos.eu/) is the main World of Warcraft private server implementation and Thistle Tea uses its database extensively for things like creatures, items, npc text, etc.
+This works really well, but I let some of the database model structure leak into the core code, which made things a bit annoying to work with.
+Instead of using their database model directly, I've moved some of it to a boundary concern using 'loaders'.
+These query from the database to get mobs and similar to spawn, but then convert to different structs that are easier to work with.
+
+The idea is that the Mangos database can be used to 'bootstrap' Thistle Tea, but we should prefer working with our own data representations.
+Additionally, the state of the system should be entirely separate from the Mangos database.
+There's still a lot I need to think about there, but I basically want to make it so it's not as tightly coupled.
+
+
 ## Re-implementing Movement
 
 As part of reworking things, I decided I wasn't going to do things from scratch.
@@ -307,16 +319,6 @@ Much easier to reason about and the underlying logic will work for any entities 
 
 I didn't add back the mob combat chasing behavior, since that's something to revisit when reworking combat to use the new abstractions.
 
-## On Mangos
-
-Mangos is the main World of Warcraft private server implementation and Thistle Tea uses its database extensively for things like creatures, items, npc text, etc.
-This works really well, but I let some of the database model structure leak into the core code, which made things a bit annoying to work with.
-Instead of using their database model directly, I've moved some of it to a boundary concern using 'loaders'.
-These query from the database to get mobs and similar to spawn, but then convert to different structs that are easier to work with.
-
-The idea is that the Mangos database can be used to 'bootstrap' Thistle Tea, but we should prefer working with our own data representations.
-Additionally, the state of the system should be entirely separate from the Mangos database.
-There's still a lot I need to think about there, but I basically want to make it so it's not as tightly coupled.
 
 ## Magic Numbers
 
