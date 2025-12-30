@@ -33,13 +33,13 @@ After lots of thinking, experimentation, and procrastination, I adopted an incre
 I've been doing some reading and [Designing Elixir Systems with OTP](https://pragprog.com/titles/jgotp/designing-elixir-systems-with-otp/) was a very helpful book.
 That gave me the idea to more clearly separate the functional core and boundary layer of the application.
 
-The functional core will be concerned with data and logic where the boundary layer will handle the process orchestration.
+The functional core will be concerned with data and logic; the boundary layer will handle the process orchestration.
 This means building out structs, separating logic out of GenServers, and building an interface that doesn't care what the processes are doing under the hood.
 The functional core can be stable and well tested with unit tests, but the boundary layer can be tweaked more easily as needs change.
 
 Like maybe if one process per entity doesn't actually scale, then the boundary layer can be tweaked to group entities together by cell or map or whatever else instead.
 
-The goal is to make it easier to reason about and develop Thistle Tea going forwards, giving it a much more solid foundation.
+The goal is to make it easier to reason about and develop Thistle Tea going forward, giving it a much more solid foundation.
 
 ## Building Entities Out Of Components
 
@@ -164,7 +164,7 @@ This allows simplifying the connection handler a lot, to roughly this:
 
 Where previously it was passing raw binary around.
 
-All messages previously handled by the application are migrated to this new consistent interface.
+All messages previously handled by the application have been migrated to this new consistent interface.
 
 As part of this, I was also able to figure out movement splines, so now a single message can move a mob to multiple points.
 This simplifies movement handling by a lot and ends up looking smoother.
@@ -180,7 +180,7 @@ The previous implementation was pretty hacky and had a few bugs.
 Fields were also added incrementally as they were needed, so it was incomplete.
 
 I rewrote a lot of this implementation, following the new data models.
-Since entities are now made up of components and this message deals with components, byte offset and other type information is placed directly alongside the component fields:
+Since entities are now made up of components and this message deals with components, byte offset and other type information are placed directly alongside the component fields:
 
 ```elixir
 defmodule ThistleTea.Game.Entity.Data.Component.Object do
@@ -240,7 +240,7 @@ There are currently systems for activating cells based on nearby players and cha
 
 Mentioned above, there's now a system to change the active game events.
 These are things like the current holidays or faire location.
-Previously everything was being started regardless, leading to things like overlapping halloween and christmas decorations.
+Previously everything was being started regardless, leading to things like overlapping Hallow's End and Winter's Veil decorations.
 
 It's a GenServer that keeps track of the current events and notifies subscribers of changed events:
 
@@ -278,10 +278,10 @@ This makes startup much quicker and brings initial memory use down to 92MB.
 
 ### On Mangos
 
-[Mangos](https://www.getmangos.eu/) is the main World of Warcraft private server implementation and Thistle Tea uses its database extensively for things like creatures, items, npc text, etc.
+[Mangos](https://www.getmangos.eu/) is the main World of Warcraft private server implementation and Thistle Tea uses its database extensively for things like creatures, items, dialogue text, etc.
 This works really well, but I let some of the database model structure leak into the core code, which made things a bit annoying to work with.
 Instead of using their database model directly, I've moved some of it to a boundary concern using 'loaders'.
-These query from the database to get mobs and similar to spawn, but then convert to different structs that are easier to work with.
+These query from the database to get mobs and other entities to spawn, but then convert to different structs that are easier to work with.
 
 The idea is that the Mangos database can be used to 'bootstrap' Thistle Tea, but we should prefer working with our own data representations.
 Additionally, the state of the system should be entirely separate from the Mangos database.
@@ -289,7 +289,7 @@ There's still a lot I need to think about there, but I basically want to make it
 
 ## Re-implementing Movement
 
-As part of reworking things, I decided I wasn't going to do things from scratch.
+As part of this effort, I wanted to keep as much of the existing code functional as feasible.
 I did end up scrapping the existing mob behavior setup, though.
 It was a bit overcomplicated and used an unnecessary GenServer just to try to isolate state.
 
@@ -335,8 +335,9 @@ There's also been some tweaks to use atoms in more places where it makes sense.
 
 ## Gains
 
-Rewriting the object update bits fixed some issues, likely due to previously having improper hex offsets for some fields.
-Like there was a weird issue where every time a player changed equipment the hover cursor would change, now resolved.
+Rewriting the object update bits fixed some issues, due to previously having incorrect hex offsets for some fields.
+For example, there was a weird issue where the hover cursor changed every time a player changed equipment.
+This now no longer happens.
 
 Since networking has been standardized with some higher level abstractions, it's been easier to build on top of it.
 Object update packets support batching, but previously we were just doing things one at a time.
@@ -432,4 +433,4 @@ Want to try implementing some features?
 
 Hop in Thistle Tea's [Discord channel](https://discord.gg/dSYsRXHDhb).
 
-These changes (hopefully) made the code much easier to work with and provide a bit of patterns for extending the system.
+These changes (hopefully) make the code much easier to work with and provide consistent patterns for extending the system.
