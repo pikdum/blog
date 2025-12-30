@@ -381,6 +381,8 @@ We received some awesome community contributions this year!
 
 ## Things I Didn't Do
 
+I feel like I spent more time thinking about doing things than actually doing things this year.
+
 ### Code Generation of Messages
 
 There's an awesome project called [wow_messages](https://github.com/gtker/wow_messages) that has message definitions for every packet.
@@ -426,8 +428,8 @@ Some rough thoughts:
 
 ## Contributing
 
-Interested in the project?
-Want to chat architecture?
+Interested in the project?\
+Want to chat architecture?\
 Want to try implementing some features?
 
 Hop in Thistle Tea's [Discord channel](https://discord.gg/dSYsRXHDhb).
