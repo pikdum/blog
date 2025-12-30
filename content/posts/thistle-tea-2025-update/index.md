@@ -377,7 +377,7 @@ We received some awesome community contributions this year!
 - better teleport (no longer requires logout) - poffdeluxe
 - emote handler for /dance and others - poffdeluxe
 - set rested state - jmmk
-- set player `unit_faction_template` based on race - adamvietro
+- set player **unit_faction_template** based on race - adamvietro
 
 ## Things I Didn't Do
 
