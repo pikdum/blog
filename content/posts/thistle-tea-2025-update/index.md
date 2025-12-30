@@ -287,7 +287,6 @@ The idea is that the Mangos database can be used to 'bootstrap' Thistle Tea, but
 Additionally, the state of the system should be entirely separate from the Mangos database.
 There's still a lot I need to think about there, but I basically want to make it so it's not as tightly coupled.
 
-
 ## Re-implementing Movement
 
 As part of reworking things, I decided I wasn't going to do things from scratch.
@@ -318,7 +317,6 @@ end
 Much easier to reason about and the underlying logic will work for any entities with movement.
 
 I didn't add back the mob combat chasing behavior, since that's something to revisit when reworking combat to use the new abstractions.
-
 
 ## Magic Numbers
 
