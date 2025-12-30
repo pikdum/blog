@@ -43,8 +43,8 @@ The goal is to make it easier to reason about and develop Thistle Tea going forw
 
 ## Building Entities Out Of Components
 
-First, some definitions.  
-An _entity_ is something like a player, mob, or item that uses the **SMSG_UPDATE_OBJECT** message.  
+First, some definitions.\
+An _entity_ is something like a player, mob, or item that uses the **SMSG_UPDATE_OBJECT** message.\
 An entity is made up of a combination of _components_, individual groups of related fields.
 
 Components:
