@@ -262,7 +262,7 @@ They can then decide to do things like change models or despawn themselves.
 Starting an event also sends a message to the cell activator, which will spawn in things that weren't previously active.
 
 The result is that events can now be changed on the fly and it'll handle adding and removing things properly.
-This doesn't yet handle model changes, where a mobs is active all the time but should change appearance during events.
+This doesn't yet handle model changes, where a mob is active all the time but should change appearance during events.
 It also needs to be wired up with a scheduler, so that holiday events are started/stopped automatically.
 
 This is probably the start of using PubSub for more things, too.
@@ -387,7 +387,7 @@ There's an awesome project called [wow_messages](https://github.com/gtker/wow_me
 These can be used to automatically generate libraries, but I decided not to go down that path.
 Looked into it for a while, but I couldn't get things working nicely.
 Instead, I went with the message abstraction described above.
-I found that LLMs are pretty decent at reading these message defintions and generating what we need, so I'm planning on building some automation around that.
+I found that LLMs are pretty decent at reading these message definitions and generating what we need, so I'm planning on building some automation around that.
 
 ### Rewriting From Scratch
 
