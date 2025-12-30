@@ -28,7 +28,7 @@ Ideally I'd be able to handle game behavior at a different layer than packet lay
 
 After lots of thinking, experimentation, and procrastination, I adopted an incremental approach to clean up the existing code.
 
-## Reorganizing
+## The Plan
 
 I've been doing some reading and [Designing Elixir Systems with OTP](https://pragprog.com/titles/jgotp/designing-elixir-systems-with-otp/) was a very helpful book.
 That gave me the idea to more clearly separate the functional core and boundary layer of the application.
@@ -39,7 +39,7 @@ The functional core can be stable and well tested with unit tests, but the bound
 
 Like maybe if one process per entity doesn't actually scale, then the boundary layer can be tweaked to group entities together by cell or map or whatever else instead.
 
-I'm hoping these changes make it easier to reason about and develop Thistle Tea going forwards, giving it a much more solid foundation.
+The goal is to make it easier to reason about and develop Thistle Tea going forwards, giving it a much more solid foundation.
 
 ## Building Entities Out Of Components
 
@@ -74,7 +74,7 @@ defmodule ThistleTea.Game.Entity.Data.Mob do
 end
 ```
 
-A pain point with writing combat was bits were written specifically for their entities.
+A pain point with writing combat was bits written specifically for their entities.
 Player could attack, but not receive attacks.
 Mobs could receive attacks, but not attack.
 Players could cast spells, but mobs couldn't.
@@ -95,13 +95,13 @@ end
 ```
 
 So now game objects, mobs, and players are all made up of the same components.
-Logic has been moved outside of the large GenServer modules and into reusable pure components.
+Logic is moved outside of the large GenServer modules and into reusable pure components.
 Some features were lost as part of this, like combat, to be reimplemented later using cleaner abstractions.
 
 ## Message Abstraction
 
 When sending packets to the client, most were still being constructed on the fly and I wanted to clean that up.
-The idea was to use structs for messages, so there's less mental overhead and room for error when making them.
+The idea is to use structs for messages, so there's less mental overhead and room for error when making them.
 The end result is a higher level interface that looks more like this:
 
 ```elixir
@@ -124,22 +124,16 @@ defmodule ThistleTea.Game.Network.Message.SmsgDestroyObject do
 end
 ```
 
-There's a small macro that helps wire things up and keep things consistent.
-
 Client packets are similar, except they need to implement `from_binary/1` and `handle/2` instead:
 
 ```elixir
 defmodule ThistleTea.Game.Network.Message.CmsgPing do
   use ThistleTea.Game.Network.ClientMessage, :CMSG_PING
 
-  require Logger
-
   defstruct [:sequence_id, :latency]
 
   @impl ClientMessage
   def handle(%__MODULE__{sequence_id: sequence_id, latency: latency}, state) do
-    Logger.info("CMSG_PING: #{latency}")
-
     Network.send_packet(%Message.SmsgPong{sequence_id: sequence_id})
     Map.put(state, :latency, latency)
   end
@@ -156,7 +150,7 @@ defmodule ThistleTea.Game.Network.Message.CmsgPing do
 end
 ```
 
-This allowed simplifying the connection handler a lot, to roughly this:
+This allows simplifying the connection handler a lot, to roughly this:
 
 ```elixir
 %Packet{
@@ -170,8 +164,7 @@ This allowed simplifying the connection handler a lot, to roughly this:
 
 Where previously it was passing raw binary around.
 
-All messages previously handled by the application have been migrated to this new consistent interface.
-I've had good luck with having LLMs wire up the `from_binary/1` and `to_binary/1` functions from the packet spec, so I'll likely write some helper scripts to better automate that process.
+All messages previously handled by the application are migrated to this new consistent interface.
 
 As part of this, I was also able to figure out movement splines, so now a single message can move a mob to multiple points.
 This simplifies movement handling by a lot and ends up looking smoother.
@@ -185,8 +178,8 @@ It uses a [bitmask](https://gtker.com/wow_messages/types/update-mask.html) to te
 
 The previous implementation was pretty hacky and had a few bugs.
 Fields were also added incrementally as they were needed, so it was incomplete.
-To start with, I needed to add some structure to this.
 
+I rewrote a lot of this implementation, following the new data models.
 Since entities are now made up of components and this message deals with components, byte offset and other type information is placed directly alongside the component fields:
 
 ```elixir
@@ -222,18 +215,59 @@ end
 This ended up being a nice abstraction and now there's no difference in creating an update object message between mobs, players, or items.
 It's also complete, with every field the client accepts set up in these components and ready for use.
 
-## On Mangos
+## The World
 
-Mangos is the main World of Warcraft private server implementation and Thistle Tea uses its database extensively for things like creatures, items, npc text, etc.
-This worked really well, but I let some of the database model structure leak into the core code, which made things a bit annoying to work with.
-Instead of using their database model directly, I've moved some of it to a boundary concern using 'loaders'.
-These query from the database to get mobs and similar to spawn, but then convert to different structs that are easier to work with.
+**ThistleTea.Game.World** is a new namespace to help organize things a bit nicer.
+Things like spatial hashing, pathfinding, loaders, and systems were moved in here.
+Functions to query nearby players, broadcast packets, and start/stop entities are part of the public interface.
 
-The idea is that the Mangos database can be used to 'bootstrap' Thistle Tea, but we should prefer working with our own data representations.
-Additionally, the state of the system should be entirely separate from the Mangos database.
-There's still a lot I need to think about there, but I basically want to make it so it's not as tightly coupled.
+The loaders handle loading data from Mangos into Thistle Tea, transforming things into our representations.
+Systems are another new abstraction, starting with cell activator and game event systems.
+The idea behind systems is to make it more standardized to build things using higher level abstractions in a relatively isolated way.
 
-## Smarter Initialization
+There are currently systems for activating cells based on nearby players and changing the current game events, but future ones could handle:
+
+- battleground queues
+- battleground objectives
+- auction house
+- mail
+- dynamic mob spawns
+- gather spots
+
+### Game Event System
+
+TODO: add video showing changing
+
+Mentioned above, there's now a system to change the active game events.
+These are things like the current holidays or faire location.
+Previously everything was being started regardless, leading to things like overlapping halloween and christmas decorations.
+
+It's a GenServer that keeps track of the current events and notifies subscribers of changed events:
+
+```elixir
+@impl GenServer
+def handle_call(:get_events, _from, state) do
+  {:reply, MapSet.to_list(state.events), state}
+end
+
+@impl GenServer
+def handle_call({:set_events, new_events}, _from, %{events: old_events} = state) do
+  notify(new_events, old_events)
+  {:reply, :ok, %{state | events: new_events}}
+end
+```
+
+If associated with a game event, mobs and game objects subscribe to a channel using Phoenix PubSub.
+They can then decide to do things like change models or despawn themselves.
+Starting an event also sends a message to the cell activator, which will spawn in things that weren't previously active.
+
+The result is that events can now be changed on the fly and it'll handle adding and removing things properly.
+This doesn't yet handle model changes, where a mobs is active all the time but should change appearance during events.
+It also needs to be wired up with a scheduler, so that holiday events are started/stopped automatically.
+
+This is probably the start of using PubSub for more things, too.
+
+### Cell Activator System
 
 Previously, processes for every mob and game object were created on startup.
 This took a few seconds and used about 1.4GB of memory.
@@ -242,10 +276,6 @@ When a cell is within range of a player, its processes are started.
 When a cell is no longer within range, its processes are stopped.
 This makes startup much quicker and brings initial memory use down to 92MB.
 
-The implementation is mostly a GenServer that polls player positions every second and chooses to start or stop cells: `ThistleTea.Game.World.System.CellActivator`
-This pattern seems to work pretty well and the idea is to build out more systems to cover other bits of functionality.
-Think managing game events, battleground queues, battlegrounds in general, dynamic mob spawns, etc.
-
 ## Re-implementing Movement
 
 As part of reworking things, I decided I wasn't going to do things from scratch.
@@ -253,7 +283,7 @@ I did end up scrapping the existing mob behavior setup, though.
 It was a bit overcomplicated and used an unnecessary GenServer just to try to isolate state.
 
 Now with abstractions cleaned up a bit and working movement splines, I reimplemented mob wandering and waypoint pathing.
-This lives in ThistleTea.Game.Entity.Logic.Movement as a functional core now, with the GenServer being a thin wrapper around it:
+This lives in **ThistleTea.Game.Entity.Logic.Movement** as a functional core now, with the GenServer being a thin wrapper around it:
 
 ```elixir
 @impl GenServer
@@ -273,9 +303,20 @@ rescue
 end
 ```
 
-Much easier to reason about.
+Much easier to reason about and the underlying logic will work for any entities with movement.
 
 I didn't add back the mob combat chasing behavior, since that's something to revisit when reworking combat to use the new abstractions.
+
+## On Mangos
+
+Mangos is the main World of Warcraft private server implementation and Thistle Tea uses its database extensively for things like creatures, items, npc text, etc.
+This works really well, but I let some of the database model structure leak into the core code, which made things a bit annoying to work with.
+Instead of using their database model directly, I've moved some of it to a boundary concern using 'loaders'.
+These query from the database to get mobs and similar to spawn, but then convert to different structs that are easier to work with.
+
+The idea is that the Mangos database can be used to 'bootstrap' Thistle Tea, but we should prefer working with our own data representations.
+Additionally, the state of the system should be entirely separate from the Mangos database.
+There's still a lot I need to think about there, but I basically want to make it so it's not as tightly coupled.
 
 ## Magic Numbers
 
@@ -283,7 +324,7 @@ There were a lot of magic numbers littered across the various bits of the applic
 Module attributes were used extensively for opcodes and other important bits, like `@smsg_foobar 0x123`.
 It worked, but they had to be duplicated across all the modules that wanted to use them.
 
-Instead of manually adding a bunch of opcode module attributes at the top of files, I created a helper macro to define them:
+Instead of manually adding a bunch of opcode module attributes at the top of files, now there's a helper macro to define them:
 
 ```elixir
 use ThistleTea.Game.Network.Opcodes, [:SMSG_UPDATE_OBJECT, :SMSG_COMPRESSED_UPDATE_OBJECT]
@@ -291,79 +332,6 @@ use ThistleTea.Game.Network.Opcodes, [:SMSG_UPDATE_OBJECT, :SMSG_COMPRESSED_UPDA
 
 This makes `@smsg_update_object` and `@smsg_compressed_update_object` available, but I don't need to remember or care about the actual opcode values.
 There's also been some tweaks to use atoms in more places where it makes sense.
-
-## Pattern matching with structs
-
-Previously there were no structs in the project, everything was just raw maps.
-Most things are now structs, which is nice.
-When pattern matching on structs in function heads, the Elixir compiler can do some type checking that helps a lot with refactoring.
-
-```elixir
-def set_position(
-      %{
-        object: %Object{guid: guid},
-        movement_block: %MovementBlock{position: {x, y, z, _o}},
-        internal: %Internal{map: map}
-      },
-      table
-    ) do
-  SpatialHash.update(table, guid, self(), map, x, y, z)
-end
-```
-
-I've been trying to do this a lot more frequently and it's a pattern I've really been liking.
-
-## The World
-
-ThistleTea.Game.World is a new namespace to help organize things a bit nicer.
-Things like spatial hashing, pathfinding, loaders, and systems were moved in here.
-Functions to query nearby players, broadcast packets, and start/stop entities are part of the public interface.
-
-The loaders handle loading data from Mangos into Thistle Tea, transforming things into our representations.
-Systems are another new abstraction, starting with cell activator and game event systems.
-The idea behind systems is to make it more standardized to build things using higher level abstractions in a relatively isolated way.
-
-There are currently systems for activating cells based on nearby players and changing the current game events, but future ones could handle:
-
-- battleground queues
-- battleground objectives
-- auction house
-- mail
-- dynamic mob spawns
-- gather spots
-
-## Game Event System
-
-TODO: add video showing changing
-
-Mentioned above, there's now a system to change the active game events.
-These are things like the current holidays or faire location.
-We were previously spawning everything regardless, leading to things like overlapping halloween and christmas decorations.
-
-It's a GenServer that keeps track of the current events and notifies subscribers of changed events:
-
-```elixir
-@impl GenServer
-def handle_call(:get_events, _from, state) do
-  {:reply, MapSet.to_list(state.events), state}
-end
-
-@impl GenServer
-def handle_call({:set_events, new_events}, _from, %{events: old_events} = state) do
-  notify(new_events, old_events)
-  {:reply, :ok, %{state | events: new_events}}
-end
-```
-
-If associated with a game event, mobs and game objects subscribe to a channel using Phoenix PubSub.
-They can then decide to do things like change models or despawn themselves.
-Starting an event also sends a message to the cell manager, which will spawn in things that weren't previously active.
-
-The result is that events can now be changed on the fly and it'll handle adding and removing things properly.
-This doesn't yet handle model changes, where a mobs is active all the time but should change appearance during events.
-It also needs to be wired up with a scheduler, so that holiday events are started/stopped automatically.
-
-This is probably the start of using PubSub for more things, too.
 
 ## Gains
 
@@ -411,21 +379,28 @@ We received some awesome community contributions this year!
 
 ## Things I Didn't Do
 
-I looked into code generation from the wow_messages project to make a library that'd automatically be able to serialize/deserialize packets.
-Didn't end up getting anything I was happy with, though.
-I did find that LLMs are pretty good at working with the new Message format to implement that logic from the specs, though, so that's likely the way going forwards.
-Still need to build some tooling to automate this further.
+### Code Generation of Messages
+
+There's an awesome project called [wow_messages](https://github.com/gtker/wow_messages) that has message definitions for every packet.
+These can be used to automatically generate libraries, but I decided not to go down that path.
+Looked into it for a while, but I couldn't get things working nicely.
+Instead, I went with the message abstraction described above.
+I found that LLMs are pretty decent at reading these message defintions and generating what we need, so I'm planning on building some automation around that.
+
+### Rewriting From Scratch
 
 I also looked into fully rewriting this from scratch and actually did for bits of the networking layer.
 But there's so much already working and I decided to refactor instead.
 I think this is the right way, I want to build a codebase that can evolve and change nicely rather than one that needs to be frequently scrapped.
 
-Using Entity Component System was another thing I tried a lot.
-Couldn't really get anything I was happy with, though.
-A lot of my proof-of-concepts relied on polling for systems, where sticking with the actor model makes things more reactive instead.
+### Entity Component System
+
+ECS makes a lot of sense and I put together some basic proof of concepts using it, but couldn't get this in a spot I liked either.
+A lot of my attempts relied on polling for systems, where sticking with the actor model makes things more reactive instead.
+The centralized state for components also made things scale poorly once you got to large numbers of components.
 It also didn't feel like the best way to try and leverage OTP, so scrapped that idea.
 
-I did steal some ideas from ECS, though, like building up our entities out of components.
+I did steal some ideas from ECS, though, like building up entities out of components.
 Then functions can be written more generically to work on multiple types of entities without needing different implementations.
 This helped a lot already with the object updates, but I'm hoping it helps a lot too when getting to reimplementing combat.
 
