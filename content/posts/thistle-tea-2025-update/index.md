@@ -289,7 +289,7 @@ There's still a lot I need to think about there, but I basically want to make it
 
 ## Re-implementing Movement
 
-As part of this effort, I wanted to keep as much of the existing code functional as feasible.
+As part of this effort, I wanted to keep as much of the existing functionality as feasible.
 I did end up scrapping the existing mob behavior setup, though.
 It was a bit overcomplicated and used an unnecessary GenServer just to try to isolate state.
 
@@ -314,7 +314,7 @@ rescue
 end
 ```
 
-Much easier to reason about and the underlying logic will work for any entities with movement.
+This is simpler to reason about and the underlying logic will work for any entities with movement.
 
 I didn't add back the mob combat chasing behavior, since that's something to revisit when reworking combat to use the new abstractions.
 
@@ -335,9 +335,9 @@ There's also been some tweaks to use atoms in more places where it makes sense.
 
 ## Gains
 
-Rewriting the object update bits fixed some issues, due to previously having incorrect hex offsets for some fields.
+Rewriting the object update bits fixed some issues due to previously having incorrect hex offsets for some fields.
 For example, there was a weird issue where the hover cursor changed every time a player changed equipment.
-This now no longer happens.
+This no longer happens.
 
 Since networking has been standardized with some higher level abstractions, it's been easier to build on top of it.
 Object update packets support batching, but previously we were just doing things one at a time.
@@ -394,7 +394,7 @@ I found that LLMs are pretty decent at reading these message definitions and gen
 
 I also looked into fully rewriting this from scratch and actually did for bits of the networking layer.
 But there's so much already working and I decided to refactor instead.
-I think this is the right way, I want to build a codebase that can evolve and change nicely rather than one that needs to be frequently scrapped.
+I think this is the right way; I want to build a codebase that can evolve and change nicely rather than one that needs to be frequently scrapped.
 
 ### Entity Component System
 
