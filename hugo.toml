@@ -18,6 +18,10 @@ url = 'https://github.com/pikdum'
 weight = 30
 
 [module]
-  [module.hugoVersion]
-    extended = false
-    min = "0.116.0"
+[module.hugoVersion]
+extended = false
+min = "0.116.0"
+
+[markup]
+[markup.highlight]
+style = 'dracula'
