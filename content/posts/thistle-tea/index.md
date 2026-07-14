@@ -6,7 +6,7 @@ tags = ['elixir', 'World of Warcraft', 'programming']
 +++
 
 Updates:
-* **2024-11-28:** Should've linked earlier, but there's now a [homepage](https://thistle_tea.pikdum.dev/) and [Discord](https://discord.gg/dSYsRXHDhb) channel.
+* **2024-11-28:** Should've linked earlier, but there's now a [homepage](https://thistle-tea.pikdum.dev/) and [Discord](https://discord.gg/dSYsRXHDhb) channel.
 
 [Thistle Tea](https://github.com/pikdum/thistle_tea) is my new World of Warcraft private server project.
 You can log in, create a character, run around, and cast spells to kill mobs, with everything synchronized between players as expected for an MMO.

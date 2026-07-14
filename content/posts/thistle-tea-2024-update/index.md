@@ -104,7 +104,7 @@ The whole thing is wrapped in a LiveView that initializes the map and places pla
 Player positions are updated every second.
 
 For a proper landing page, I added some information on how to connect and embedded the map.
-The test site is visible at [https://thistle_tea.pikdum.dev](https://thistle_tea.pikdum.dev).
+The test site is visible at [https://thistle-tea.pikdum.dev](https://thistle-tea.pikdum.dev).
 Feel free to connect and play around if you have a Vanilla 1.12 client handy.
 
 I've also wired up [Phoenix LiveDashboard](https://github.com/phoenixframework/phoenix_live_dashboard) to get some monitoring and telemetry visualizations.
